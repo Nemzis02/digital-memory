@@ -4,6 +4,14 @@ import tseslint from 'typescript-eslint';
 import stylistic from '@stylistic/eslint-plugin';
 import prettier from 'eslint-config-prettier';
 
+const MULTILINE = [
+  'multiline-block-like',
+  'multiline-const',
+  'multiline-let',
+  'multiline-var',
+  'multiline-expression',
+];
+
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**', 'coverage/**'] },
   js.configs.recommended,
@@ -22,8 +30,8 @@ export default tseslint.config(
     rules: {
       '@stylistic/padding-line-between-statements': [
         'error',
-        { blankLine: 'always', prev: 'multiline-block-like', next: '*' },
-        { blankLine: 'always', prev: '*', next: 'multiline-block-like' },
+        { blankLine: 'always', prev: MULTILINE, next: '*' },
+        { blankLine: 'always', prev: '*', next: MULTILINE },
       ],
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': [
@@ -65,4 +73,9 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
   },
   prettier,
+  {
+    rules: {
+      curly: ['error', 'all'],
+    },
+  },
 );

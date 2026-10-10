@@ -2,7 +2,7 @@
 
 - [x] Task 1: Initialize TypeScript Node.js project (`package.json`, `tsconfig.json`, ESLint/Prettier).
 - [x] Task 2: Setup environment config validation (`zod` + built-in `process.loadEnvFile()`).
-- [ ] Task 3: Implement Cloudflare R2 client (`src/core/storage/r2.ts`) with Pre-signed URL generation.
+- [x] Task 3: Implement Cloudflare R2 client (`src/core/storage/r2.ts`) with Pre-signed URL generation.
 - [ ] Task 4: Implement Qdrant client (`src/core/vector/qdrant.ts`) with Hybrid Search collection init.
 - [ ] Task 5: Build basic `grammY` Telegram bot listener (`src/bot/index.ts`).
 
@@ -16,7 +16,7 @@ ESM TypeScript project on Node >= 22.18 using native type stripping (no `tsx`/`t
 | `tsconfig.json`                         | `NodeNext`, `strict`, `erasableSyntaxOnly`, `exactOptionalPropertyTypes` |
 | `tsconfig.build.json`                   | Build config that excludes `*.test.ts` from `dist/`                      |
 | `eslint.config.js`                      | Flat config, type-checked rules, AGENTS.md guardrails                    |
-| `.prettierrc.json`                      | 100 cols, single quotes, trailing commas                                 |
+| `.prettierrc.json`                      | 100 cols, single quotes, `objectWrap: preserve`                          |
 | `.editorconfig`, `.nvmrc`, `.gitignore` | Editor/runtime/VCS hygiene                                               |
 
 Two AGENTS.md rules are enforced by the linter rather than by review:
@@ -58,7 +58,31 @@ Verified by linting a throwaway `src/bot/` file that imports the Qdrant client.
 `src/core/logging/redact.ts` reads secret values straight from `process.env` rather than via `getEnv()`,
 so it still redacts correctly when configuration validation is the thing that failed.
 
-## Task 3 — Ready
+## Task 3 — Done (2026-10-10)
 
-`getEnv()` and `r2Endpoint()` are the intended inputs for the `S3Client` in
-`src/core/storage/r2.ts`. Clamp `getSignedUrl` with `expiresIn: env.R2_PRESIGN_TTL_SECONDS`.
+| File                                 | Purpose                                                          |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| `src/core/storage/object-storage.ts` | `ObjectStorage` port, `ObjectNotFoundError`, upload/result types |
+| `src/core/storage/content.ts`        | `resolveContent()` over `file-type`, plus the key layout         |
+| `src/core/storage/r2.ts`             | R2 adapter: `createR2Storage()`, cached `r2Storage()`            |
+| `src/core/storage/*.test.ts`         | 13 vitest cases against a mocked `@aws-sdk/client-s3`            |
+
+The rest of the codebase depends on `ObjectStorage` — `upload`, `presignDownload`,
+`openStream`, `remove` — and never on `r2.ts`. The port exists so pipeline tests get a fake
+and so SDK types stop at this folder, not because a move off Cloudflare is planned.
+`presignDownload` takes a TTL but clamps it to `R2_PRESIGN_TTL_SECONDS`, so no caller can
+widen the 15-minute window, and nothing anywhere builds a URL by hand.
+
+Telegram's `mime_type` and `file_name` are both sender-supplied, so `resolveContent()` sniffs
+the bytes with `file-type` and returns the MIME type and extension together. The sender's
+labels are reached only for formats with no magic number — text, CSV, SVG — and the declared
+type must parse as a bare MIME token before it is used. Keys are
+`<photos|documents|voice>/<yyyy>/<mm>/<uuid>.<ext>`. Objects are written with
+`Content-Disposition: attachment`, which is what stops a pre-signed URL rendering a sender's
+SVG on `*.r2.cloudflarestorage.com` — sniffing cannot, since SVG is XML with no signature.
+
+## Task 4 — Ready
+
+`QDRANT_URL`, `QDRANT_API_KEY`, and `QDRANT_COLLECTION` are already validated. Mirror the
+port/adapter split of `src/core/storage/`: the vector contract the pipeline sees, then the
+Qdrant client behind it. The payload to index is plan §1.

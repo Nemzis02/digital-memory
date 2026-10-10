@@ -18,7 +18,9 @@ src/
 │   ├── memory/
 │   │   └── payload.ts        # MemoryPayload, see §1
 │   ├── storage/
-│   │   └── r2.ts             # Task 3
+│   │   ├── object-storage.ts # ObjectStorage port, consumed by the pipeline
+│   │   ├── content.ts        # file-type sniffing, key layout
+│   │   └── r2.ts             # Task 3 — the only file that imports the S3 SDK
 │   ├── vector/
 │   │   └── qdrant.ts         # Task 4
 │   ├── llm/
@@ -97,6 +99,7 @@ The processing logic in `src/core/pipeline/` should follow a directed graph:
 
 - `grammY` (Telegram Bot API)
 - `@aws-sdk/client-s3` (For Cloudflare R2 integration via S3 compat)
+- `file-type` (Magic-byte detection; Telegram's declared MIME types are sender-controlled)
 - `@qdrant/js-client-rest` (Qdrant DB)
 - `@langchain/langgraph` + `@langchain/core` (Orchestration)
 - `zod` + `dotenv` (Validation)

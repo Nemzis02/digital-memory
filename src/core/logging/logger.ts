@@ -22,7 +22,9 @@ function thresholdLevel(): LogLevel {
 
 function createLogger(bindings: LogFields): Logger {
   const write = (level: LogLevel, message: string, fields?: LogFields): void => {
-    if (LEVELS[level] < LEVELS[thresholdLevel()]) return;
+    if (LEVELS[level] < LEVELS[thresholdLevel()]) {
+      return;
+    }
 
     const record = {
       level,
@@ -33,8 +35,11 @@ function createLogger(bindings: LogFields): Logger {
 
     const line = JSON.stringify(record);
 
-    if (LEVELS[level] >= LEVELS.warn) process.stderr.write(`${line}\n`);
-    else process.stdout.write(`${line}\n`);
+    if (LEVELS[level] >= LEVELS.warn) {
+      process.stderr.write(`${line}\n`);
+    } else {
+      process.stdout.write(`${line}\n`);
+    }
   };
 
   return {

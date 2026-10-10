@@ -72,5 +72,9 @@ only the commits in a push or PR, so pre-convention history never retroactively 
 
 - `@qdrant/js-client-rest@1.19.0` pins a vulnerable `undici@7.29.0`; held at `^7.29.1` through
   `overrides`. Re-check when the Qdrant client is upgraded.
-- Changing a dependency major after an install leaves npm's tree stale and reports a bogus
-  `ERESOLVE` conflict. Fix with `rm -rf node_modules package-lock.json && npm install`.
+
+### `file-type` returns MIME types carrying parameters
+
+A Telegram voice note sniffs as `audio/ogg; codecs=opus`, so `=== 'audio/ogg'` silently misses
+every one of them. Sender-declared types are stripped to a bare token before use and sniffed
+types are not, so the two disagree by design. Branch on `ObjectKind`, never on the MIME string.

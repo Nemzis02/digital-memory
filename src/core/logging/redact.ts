@@ -39,9 +39,17 @@ export function maskSecrets(text: string): string {
 }
 
 function redact(value: unknown, seen: WeakSet<object>): unknown {
-  if (typeof value === 'string') return maskSecrets(value);
-  if (value === null || typeof value !== 'object') return value;
-  if (seen.has(value)) return '[Circular]';
+  if (typeof value === 'string') {
+    return maskSecrets(value);
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
 
   seen.add(value);
 
@@ -53,7 +61,9 @@ function redact(value: unknown, seen: WeakSet<object>): unknown {
     };
   }
 
-  if (Array.isArray(value)) return value.map((item) => redact(item, seen));
+  if (Array.isArray(value)) {
+    return value.map((item) => redact(item, seen));
+  }
 
   const result: Record<string, unknown> = {};
 
