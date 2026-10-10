@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseEnv, r2Endpoint } from './env.ts';
 
 const valid = {
-  TELEGRAM_BOT_TOKEN: '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  TELEGRAM_BOT_TOKEN: '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // gitleaks:allow
   TELEGRAM_ADMIN_ID: '123456789',
   QDRANT_URL: 'https://example.cloud.qdrant.io:6333',
   QDRANT_API_KEY: 'qdrant-key',
