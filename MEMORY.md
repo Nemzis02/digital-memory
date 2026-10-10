@@ -23,16 +23,18 @@ Node and `@types/node` stay on 24 for all of Phase 1 even though 26 is now LTS.
 This requires `erasableSyntaxOnly`, which bans **`enum`, `namespace`, and constructor
 parameter properties**. Use an `as const` object with a derived union instead of `enum`.
 
+### `exactOptionalPropertyTypes` rejects `field: undefined` on generated API types
+
+OpenAPI-derived request types (Qdrant's `Schemas`) spell optionals as `T | null`, so passing a
+key whose value may be absent does not compile. Spread it in conditionally — `...(x === undefined
+? {} : { x })` — rather than widening the call site or reaching for `null`.
+
 ### Relative imports must use `.ts`, not `.js`
 
 Node's type stripping does not remap `./env.js` to `./env.ts`, so the traditional `.js`
 specifier dies at runtime with `ERR_MODULE_NOT_FOUND` while `tsc --noEmit` stays green — CI
 will not catch it. `allowImportingTsExtensions` + `rewriteRelativeImportExtensions` let source
 say `./env.ts` and still emit `./env.js`.
-
-### `process.loadEnvFile()` throws `ENOENT` when `.env` is absent
-
-That is the normal production case, so the call must be wrapped and `ENOENT` swallowed.
 
 ### Env validation is lazy, not import-time
 

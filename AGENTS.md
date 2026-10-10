@@ -17,6 +17,12 @@
 - **Check the entry is in the right file.** A decision with alternatives and a revisit trigger belongs in `docs/adr/`; a repeatable procedure belongs in a skill. Leave at most a one-line pointer.
 - **Absolute dates only.** `2026-10-10`, never "last week".
 
+## Committing
+
+**The agent never commits.** Finish the work, leave it unstaged in the working tree, and say
+what changed. The same goes for `git add`, `stash`, and `reset` — nothing may move work out of
+`git status`. Propose a commit message in chat if one is useful.
+
 ## Commit Convention
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/). This is enforced

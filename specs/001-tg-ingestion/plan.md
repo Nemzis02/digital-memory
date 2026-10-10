@@ -60,23 +60,57 @@ Every item saved to Qdrant must contain a rich payload to allow strict metadata 
 
 ```typescript
 interface MemoryPayload {
-  id: string; // UUID
-  telegram_message_id: number;
+  id: UUID; // UUIDv5 over source + source_ref, so a retry overwrites its own point
+  source: 'telegram' | 'mcp';
+  source_ref: string; // Telegram message id, or the MCP caller's idempotency key
   type: 'text' | 'photo' | 'document' | 'url' | 'voice';
   original_text: string; // Extracted text, OCR result, or transcript
+  summary: string; // Shown in the save confirmation; a child inherits its parent's
+  source_url?: string; // Required when type is 'url'
   r2_file_path?: string; // Relative path in R2 bucket (e.g., "photos/2026/img1.jpg")
   metadata: {
-    category: 'food' | 'bureaucracy' | 'housing' | 'leisure' | 'finance' | 'other';
+    // The life domain
+    category:
+      | 'food'
+      | 'bureaucracy'
+      | 'housing'
+      | 'finance'
+      | 'health'
+      | 'work'
+      | 'travel'
+      | 'transport'
+      | 'shopping'
+      | 'leisure'
+      | 'learning'
+      | 'people'
+      | 'other';
+    // What the item is for, independent of its domain
+    kind:
+      | 'reference'
+      | 'event'
+      | 'task'
+      | 'receipt'
+      | 'credential'
+      | 'recommendation'
+      | 'idea'
+      | 'note';
     location?: string; // e.g., "Valencia", "Madrid"
     tags: string[]; // e.g., ["#paella", "#cita_previa"]
   };
   chunking: {
     is_child: boolean;
-    parent_id?: string; // Used for Parent-Child RAG retrieval
+    parent_id?: UUID; // Used for Parent-Child RAG retrieval
   };
   created_at: number; // Unix timestamp
+  event_at?: number; // When the thing happens, as opposed to when it was saved
 }
 ```
+
+`category` and `kind` are two axes rather than one longer list: a query usually remembers a
+domain, a shape, or a date, and 13 × 8 values cover far more of that than 21 values on a
+single axis would, while each axis stays small enough for the enrichment model to classify
+reliably. `tags` remains the open axis. Both enums are append-only in practice — adding a
+value leaves stored points readable, renaming one does not.
 
 ## 2. Ingestion Pipeline Workflow (LangGraph)
 

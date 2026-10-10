@@ -4,6 +4,7 @@ import { parseEnv, r2Endpoint } from './env.ts';
 const valid = {
   TELEGRAM_BOT_TOKEN: '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // gitleaks:allow
   TELEGRAM_ADMIN_ID: '123456789',
+  DATABASE_URL: 'postgresql://digital_memory:pw@localhost:5432/digital_memory',
   QDRANT_URL: 'https://example.cloud.qdrant.io:6333',
   QDRANT_API_KEY: 'qdrant-key',
   R2_ACCOUNT_ID: 'acct',
@@ -37,6 +38,17 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, TELEGRAM_BOT_TOKEN: 'not-a-token' })).toThrow(
       /TELEGRAM_BOT_TOKEN/,
     );
+  });
+
+  it('refuses a reachable webhook with no secret to authenticate it', () => {
+    expect(() => parseEnv({ ...valid, PUBLIC_URL: 'https://memory.example' })).toThrow(
+      /TELEGRAM_WEBHOOK_SECRET/,
+    );
+  });
+
+  it('allows long polling, where there is no endpoint to forge against', () => {
+    expect(parseEnv(valid).PUBLIC_URL).toBeUndefined();
+    expect(parseEnv(valid).PORT).toBe(8080);
   });
 
   it('derives the R2 S3 endpoint from the account id', () => {

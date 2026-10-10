@@ -48,6 +48,7 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
 const env = parseEnv({
   TELEGRAM_BOT_TOKEN: '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // gitleaks:allow
   TELEGRAM_ADMIN_ID: '123456789',
+  DATABASE_URL: 'postgresql://digital_memory:pw@localhost:5432/digital_memory',
   QDRANT_URL: 'https://example.cloud.qdrant.io:6333',
   QDRANT_API_KEY: 'qdrant-key',
   R2_ACCOUNT_ID: 'acct',
