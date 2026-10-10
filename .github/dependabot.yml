@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns:
+          - 'eslint*'
+          - '@eslint/*'
+          - 'typescript*'
+          - 'prettier*'
+          - 'vitest'
+          - '@vitest/*'
+          - '@types/*'
+          - 'globals'
+      aws-sdk:
+        patterns:
+          - '@aws-sdk/*'
+      langchain:
+        patterns:
+          - '@langchain/*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

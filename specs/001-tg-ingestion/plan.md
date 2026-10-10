@@ -1,33 +1,88 @@
 # Implementation Plan: 001 Telegram Ingestion Pipeline
 
+## 0. Directory Layout
+
+Every concern inside `src/core/` gets its own folder. Tests are co-located as `*.test.ts`
+next to the source they cover, which is what `vitest.config.ts` globs.
+
+```text
+src/
+├── config/                   # consumed by every layer, so not domain logic
+│   ├── env.ts                # Zod schema, parseEnv(), getEnv(), r2Endpoint()
+│   └── load-env.ts           # process.loadEnvFile() shim, entrypoints only
+│
+├── core/                     # AGENTS.md rule 2: all domain + RAG logic
+│   ├── logging/
+│   │   ├── logger.ts         # structured JSON records
+│   │   └── redact.ts         # credential scrubbing (AGENTS.md rule 1)
+│   ├── memory/
+│   │   └── payload.ts        # MemoryPayload, see §1
+│   ├── storage/
+│   │   └── r2.ts             # Task 3
+│   ├── vector/
+│   │   └── qdrant.ts         # Task 4
+│   ├── llm/
+│   │   └── router.ts         # Gemini Flash for ingest, Claude/GPT for reasoning
+│   └── pipeline/             # see §2, one file per graph node
+│       ├── graph.ts          # LangGraph assembly
+│       ├── state.ts          # graph state type
+│       └── nodes/            # receiver, file-handler, extraction,
+│                             # enrichment, chunking, storage
+│
+├── bot/                      # Task 5 — transport only
+│   ├── index.ts
+│   ├── middleware/           # TELEGRAM_ADMIN_ID guard
+│   └── handlers/
+│
+└── mcp/                      # Phase 2 — transport only
+    ├── server.ts
+    ├── oauth/
+    └── tools/
+```
+
+Two constraints this layout exists to protect:
+
+1. **No barrel `index.ts` files.** Beyond the usual import-cycle and tree-shaking cost, a
+   barrel defeats the architecture guard: `no-restricted-imports` stops `src/bot/` importing
+   `@qdrant/*` directly, but a `core/index.ts` re-exporting Qdrant types would reopen that
+   path. Deep, explicit import paths keep the rule enforceable.
+2. **`redact.ts` is separate from `logger.ts`.** The same scrubbing is needed anywhere text
+   leaves the process — prompts sent to an LLM, error reports — not only on the logging path.
+
+Relative imports use the real `.ts` extension; `tsc` rewrites them to `.js` on emit. See
+`MEMORY.md` for why.
+
 ## 1. Data Schema (Qdrant Payload)
+
 Every item saved to Qdrant must contain a rich payload to allow strict metadata filtering before dense search.
 
 ```typescript
 interface MemoryPayload {
-  id: string;                  // UUID
+  id: string; // UUID
   telegram_message_id: number;
   type: 'text' | 'photo' | 'document' | 'url' | 'voice';
-  original_text: string;       // Extracted text, OCR result, or transcript
-  r2_file_path?: string;       // Relative path in R2 bucket (e.g., "photos/2026/img1.jpg")
+  original_text: string; // Extracted text, OCR result, or transcript
+  r2_file_path?: string; // Relative path in R2 bucket (e.g., "photos/2026/img1.jpg")
   metadata: {
     category: 'food' | 'bureaucracy' | 'housing' | 'leisure' | 'finance' | 'other';
-    location?: string;         // e.g., "Valencia", "Madrid"
-    tags: string[];            // e.g., ["#paella", "#cita_previa"]
+    location?: string; // e.g., "Valencia", "Madrid"
+    tags: string[]; // e.g., ["#paella", "#cita_previa"]
   };
   chunking: {
     is_child: boolean;
-    parent_id?: string;        // Used for Parent-Child RAG retrieval
+    parent_id?: string; // Used for Parent-Child RAG retrieval
   };
-  created_at: number;          // Unix timestamp
+  created_at: number; // Unix timestamp
 }
 ```
 
 ## 2. Ingestion Pipeline Workflow (LangGraph)
+
 The processing logic in `src/core/pipeline/` should follow a directed graph:
+
 1. **Receiver Node:** Accept payload from Telegram bot.
-2. **File Handler Node:** 
-   - *CRITICAL:* Telegram `getFile` URLs expire quickly. Do not store Telegram URLs.
+2. **File Handler Node:**
+   - _CRITICAL:_ Telegram `getFile` URLs expire quickly. Do not store Telegram URLs.
    - Download the file into a memory buffer and immediately upload it to Cloudflare R2.
    - Return the internal `r2_file_path`.
 3. **Extraction Node:**
@@ -39,6 +94,7 @@ The processing logic in `src/core/pipeline/` should follow a directed graph:
 6. **Storage Node:** Save vectors and sparse index (BM25) to Qdrant Cloud.
 
 ## 3. Libraries & Dependencies
+
 - `grammY` (Telegram Bot API)
 - `@aws-sdk/client-s3` (For Cloudflare R2 integration via S3 compat)
 - `@qdrant/js-client-rest` (Qdrant DB)
@@ -46,7 +102,9 @@ The processing logic in `src/core/pipeline/` should follow a directed graph:
 - `zod` + `dotenv` (Validation)
 
 ## 4. Environment Variables
+
 The application requires the following environment variables (to be validated by Zod in Task 2):
+
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_ADMIN_ID` (Personal Telegram ID for security/OAuth)
 - `QDRANT_URL`

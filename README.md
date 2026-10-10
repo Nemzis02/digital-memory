@@ -35,3 +35,4 @@ digital-memory/
 ├── specs/                     # Feature Specifications (SDD workflow)
 │   └── 001-tg-ingestion/      # Phase 1: Ingestion Pipeline
 └── src/                       # Core application source code
+```
