@@ -1,0 +1,27 @@
+{
+  "extends": ["@commitlint/config-conventional"],
+  "rules": {
+    "header-max-length": [2, "always", 72],
+    "body-max-line-length": [2, "always", 72],
+    "scope-enum": [
+      2,
+      "always",
+      [
+        "config",
+        "core",
+        "logging",
+        "storage",
+        "vector",
+        "llm",
+        "pipeline",
+        "bot",
+        "mcp",
+        "ci",
+        "deps",
+        "docs",
+        "spec",
+        "tooling"
+      ]
+    ]
+  }
+}

@@ -4,6 +4,34 @@
 
 - All conversations, commit messages, code comments, and specifications MUST be in English.
 
+## MEMORY.md Discipline
+
+`MEMORY.md` holds only what a competent engineer could not derive from the repo itself. A stale entry is worse than a missing one, because it is believed.
+
+- **One entry, one constraint.** The heading states the constraint ("Relative imports must use `.ts`"), never the topic ("imports").
+- **Non-derivable only.** If it is visible in `package.json`, a config file, or a single source file, it does not belong here. Never restate current code, or a decision the code already reflects.
+- **No change narration.** Record the constraint, not the work that produced it. Never "verified", "fixed", "as requested".
+- **Search before writing; update in place.** Two entries on one subject is a defect — merge them.
+- **Delete on contradiction, in the session you notice it.** Deletion is most of the value.
+- **Budget 80 lines, max 5 lines per entry.** Over budget, a new entry must be paid for by removing another. The cap exists to force the question "what is the least useful line here?".
+- **Check the entry is in the right file.** A decision with alternatives and a revisit trigger belongs in `docs/adr/`; a repeatable procedure belongs in a skill. Leave at most a one-line pointer.
+- **Absolute dates only.** `2026-10-10`, never "last week".
+
+## Commit Convention
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/). This is enforced
+locally by a `commit-msg` hook (husky + commitlint) and in CI by the `commits` job, so a
+non-conforming message cannot land.
+
+```
+<type>(<scope>): <subject>
+```
+
+- **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+- **Scopes:** `config`, `core`, `logging`, `storage`, `vector`, `llm`, `pipeline`, `bot`, `mcp`, `ci`, `deps`, `docs`, `spec`, `tooling`. The scope is optional; when present it MUST be from this list. Extend the list in `.commitlintrc.json` rather than inventing one.
+- **Subject:** imperative mood, lower case, no trailing period. Header capped at 72 characters, body lines at 72.
+- A breaking change is marked with `!` after the scope (`feat(mcp)!: ...`) or a `BREAKING CHANGE:` footer.
+
 ## Code Comments
 
 - Default to no comment. Code shows _how_; a comment earns its place only by carrying _why_ — a non-obvious constraint, a deliberate deviation, a gotcha, a workaround, or the reason a tempting simpler version is wrong.
