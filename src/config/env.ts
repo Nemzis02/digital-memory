@@ -54,8 +54,9 @@ const envSchema = z
     // Hard ceiling, not a tunable: R2 objects must never be reachable for longer.
     R2_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().max(900).default(900),
 
-    // LLM routing
+    // Gemini: embeddings and ingestion. Anthropic: answers, absent until a question is asked.
     LLM_API_KEY: nonEmpty('LLM_API_KEY'),
+    ANTHROPIC_API_KEY: nonEmpty('ANTHROPIC_API_KEY').optional(),
   })
   .refine((env) => env.PUBLIC_URL === undefined || env.TELEGRAM_WEBHOOK_SECRET !== undefined, {
     error:

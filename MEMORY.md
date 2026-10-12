@@ -4,6 +4,11 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-12 — gemini-embedding-2
+
+`taskType` is rejected. Query text is `task: search result | query: …` and document text is
+`title: none | text: …`; both sides must match. A list of strings is one input and one vector.
+
 ## 2026-10-10 — Toolchain bootstrap
 
 ### TypeScript 7 has no JavaScript compiler API
@@ -61,14 +66,7 @@ not found by the project service". Adding it to `include` would break `rootDir`;
 
 Placeholder values in `.env.example` and test fixtures tripped it. Prefer the inline
 `// gitleaks:allow` directive over a path allowlist for `*.test.ts`, which would blind the
-scanner to a real secret pasted into a test later. Note that `gitleaks-action` scans only the
-commits in a push, not full history.
-
-### Commit hooks activate on install, not on clone
-
-`core.hooksPath` is local git config that no clone carries, so a contributor who skips
-`npm install` gets no commitlint check — the CI `commits` job is the real gate. It validates
-only the commits in a push or PR, so pre-convention history never retroactively fails.
+scanner to a real secret pasted into a test later.
 
 ### npm
 

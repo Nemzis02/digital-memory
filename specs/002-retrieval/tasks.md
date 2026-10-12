@@ -1,7 +1,6 @@
 # Implementation Tasks: 002 Retrieval
 
-Blocked on spec 001 Task 6 (`src/core/llm/`). The embedding model decides
-`DENSE_VECTOR_SIZE`, and indexing anything before it is settled means re-indexing.
+Unblocked. Dense vectors are 1536, from `gemini-embedding-2` (spec 001 Task 6).
 
 - [ ] Task 1: `IntentClassifier` port and its structured-output implementation over the fast
       model, returning one of `save`, `ask`, `recall-by-filter`, `forget` plus filled slots.

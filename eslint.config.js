@@ -34,6 +34,19 @@ export default tseslint.config(
         { blankLine: 'always', prev: '*', next: MULTILINE },
       ],
       '@typescript-eslint/consistent-type-imports': 'error',
+      'no-use-before-define': 'off',
+      '@typescript-eslint/no-use-before-define': [
+        'error',
+        {
+          functions: true,
+          classes: true,
+          variables: true,
+          enums: true,
+          typedefs: true,
+          ignoreTypeReferences: true,
+          allowNamedExports: false,
+        },
+      ],
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
@@ -49,6 +62,28 @@ export default tseslint.config(
   },
   {
     files: ['src/core/**/*.ts'],
+    ignores: ['src/core/llm/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['grammy', 'grammy/*', '@grammyjs/*'],
+              message: 'Telegram types stop at src/bot/. Core sees ports such as FileSource.',
+            },
+            {
+              group: ['ai', 'ai/*', '@ai-sdk/*'],
+              message:
+                'Model SDKs stay in src/core/llm/. Everyone else uses the router and embeddings ports.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/core/llm/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -78,6 +113,11 @@ export default tseslint.config(
               group: ['@qdrant/*', '@aws-sdk/*', '@langchain/*'],
               message:
                 'Storage and RAG clients belong in src/core/. Transports consume core services.',
+            },
+            {
+              group: ['ai', 'ai/*', '@ai-sdk/*'],
+              message:
+                'Model SDKs stay in src/core/llm/. Transports consume the router and embeddings ports.',
             },
           ],
         },

@@ -22,6 +22,11 @@ describe('parseEnv', () => {
     expect(env.QDRANT_COLLECTION).toBe('digital_memory');
     expect(env.TELEGRAM_ADMIN_ID).toBe(123456789);
     expect(env.R2_PRESIGN_TTL_SECONDS).toBe(900);
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('rejects a blank Anthropic key', () => {
+    expect(() => parseEnv({ ...valid, ANTHROPIC_API_KEY: '   ' })).toThrow(/ANTHROPIC_API_KEY/);
   });
 
   it('rejects a pre-signed URL TTL above 15 minutes', () => {

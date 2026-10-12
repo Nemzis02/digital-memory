@@ -5,11 +5,11 @@
 - [x] Task 3: Implement Cloudflare R2 client (`src/core/storage/r2.ts`) with Pre-signed URL generation.
 - [x] Task 4: Implement Qdrant client (`src/core/vector/qdrant.ts`) with Hybrid Search collection init.
 - [x] Task 5: Build basic `grammY` Telegram bot listener (`src/bot/index.ts`).
-- [ ] Task 6: Implement the LLM router and embeddings (`src/core/llm/`); settles `DENSE_VECTOR_SIZE`.
+- [x] Task 6: Implement the LLM router and embeddings (`src/core/llm/`); settles `DENSE_VECTOR_SIZE`.
 - [ ] Task 7: Assemble the LangGraph ingestion pipeline (`src/core/pipeline/`) per plan §2.
 
-The read path is spec `002-retrieval`, blocked on Task 6. The MCP server is Phase 2 and has no
-spec yet. Anything not listed above is deferred on purpose, not forgotten.
+The read path is spec `002-retrieval`. The MCP server is Phase 2 and has no spec yet. Anything
+not listed above is deferred on purpose, not forgotten.
 
 ## Task 1 — Done (2026-10-10)
 
@@ -184,3 +184,33 @@ and long-polls. `npm run dev` is that path.
 
 Every exchange is appended to `conversation_turns`. `dispatch` passes `contextWindow()` into the
 classifier. `reply_to_message` is only the explicit jump back to an older turn.
+
+## Task 6 — Done (2026-10-12)
+
+| File                         | Purpose                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `src/core/llm/embeddings.ts` | `gemini-embedding-2` at `DENSE_VECTOR_SIZE`, plus local term frequencies |
+| `src/core/llm/router.ts`     | `gemini-3.8-flash` for ingest, `claude-sonnet-5-5` for answers           |
+| `src/core/llm/*.test.ts`     | Vitest against AI SDK mocks, plus an opt-in live smoke test              |
+
+`DENSE_VECTOR_SIZE` stays 1536. `gemini-embedding-2` recommends 768, 1536, and 3072, and the
+collection was already declared at 1536. The API returns a unit vector at every width, so nothing
+renormalizes it. `gemini-embedding-001` does not normalize a truncated vector, and cosine would
+then rank garbage, which is why the model is embedding-2. The model rejects `taskType`. A query
+is prefixed `task: search result | query: …` and a document `title: none | text: …`, and both
+sides use that wording. A list of strings is one input and one vector, so each text is its own
+embedding value. The prefix never reaches `embedSparse`, or those tokens would dominate BM25.
+
+`embedSparse` hashes tokens to uint32 indices and stores raw term frequencies. The collection's
+`bm25` vector has `modifier: 'idf'`, so Qdrant applies document frequency. The same function
+serves a stored point and a query.
+
+The fast model runs at reasoning `low`. `gemini-3.8-flash` rejects `minimal`. A completion has
+to end on a user turn that contains text: a trailing model turn is a prefill, and an empty
+final turn is rejected. The instruction is its own field, so inbound text stays data.
+
+`claude-sonnet-5-5` answers. `ANTHROPIC_API_KEY` is optional at boot, because ingestion only
+needs `LLM_API_KEY`, and `model('strong')` throws when the answer key is absent. Images are
+limited to jpeg, png, gif, and webp, the set both models accept. Provider calls go through the
+Vercel AI SDK and stop at `src/core/llm/`; the lint rule is what keeps a transport from growing
+its own client. A gateway stays a registry swap. See ADR 003.
