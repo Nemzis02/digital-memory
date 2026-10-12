@@ -48,6 +48,22 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/core/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['grammy', 'grammy/*', '@grammyjs/*'],
+              message: 'Telegram types stop at src/bot/. Core sees ports such as FileSource.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/bot/**/*.ts', 'src/mcp/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -76,6 +92,12 @@ export default tseslint.config(
   {
     rules: {
       curly: ['error', 'all'],
+    },
+  },
+  {
+    files: ['src/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/require-await': 'off',
     },
   },
 );

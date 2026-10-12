@@ -4,7 +4,7 @@
 - [x] Task 2: Setup environment config validation (`zod` + built-in `process.loadEnvFile()`).
 - [x] Task 3: Implement Cloudflare R2 client (`src/core/storage/r2.ts`) with Pre-signed URL generation.
 - [x] Task 4: Implement Qdrant client (`src/core/vector/qdrant.ts`) with Hybrid Search collection init.
-- [ ] Task 5: Build basic `grammY` Telegram bot listener (`src/bot/index.ts`).
+- [x] Task 5: Build basic `grammY` Telegram bot listener (`src/bot/index.ts`).
 - [ ] Task 6: Implement the LLM router and embeddings (`src/core/llm/`); settles `DENSE_VECTOR_SIZE`.
 - [ ] Task 7: Assemble the LangGraph ingestion pipeline (`src/core/pipeline/`) per plan §2.
 
@@ -149,55 +149,38 @@ item always lands on the same point, so a retried webhook overwrites rather than
 `list()` serves the `recall-by-filter` intent — a payload query with no embedding, ordered by
 `event_at`, which is the one retrieval path that needs no model call at all.
 
-## Task 5 — Ready
+## Task 5 — Done (2026-10-10)
 
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_ID` are already validated, and the admin guard in
-plan §0 is the only middleware Phase 1 needs. `src/bot/` may not import `@qdrant/*`,
-`@aws-sdk/*`, or `@langchain/*` — the linter enforces it.
+| File                                | Purpose                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/core/retrieval/intent.ts`      | `Intent` union, `IntentClassifier` port, `stubIntentClassifier()`                       |
+| `src/core/ingestion/file-source.ts` | `FileSource` port. grammY never enters `src/core/`                                      |
+| `src/core/ingestion/inbound.ts`     | Transport-neutral `InboundMessage`, `turnBody()`                                        |
+| `src/core/ingestion/save.ts`        | Download + `ObjectStorage.upload`, `storedReply()` / key parser                         |
+| `src/core/ingestion/route.ts`       | `respond()` / `dispatch()`. Save uploads; the other three intents reply `not built yet` |
+| `src/core/conversation/store.ts`    | Drizzle `ConversationLog`: upsert user + chat, append both turns                        |
+| `src/bot/index.ts`                  | Composition root. `PUBLIC_URL` unset means long polling                                 |
+| `src/bot/listen.ts`                 | `deleteWebhook` then `bot.start`, or the webhook server                                 |
+| `src/bot/webhook.ts`                | Rejects a bad `X-Telegram-Bot-Api-Secret-Token` before grammY                           |
+| `src/bot/middleware/admin.ts`       | Drops any `from.id` other than `TELEGRAM_ADMIN_ID`, with no reply                       |
+| `src/bot/files.ts`                  | `FileSource` over `getFile` + `api.telegram.org`                                        |
+| `src/bot/handlers/updates.ts`       | Message mapping, inline keyboard, undo / save callbacks                                 |
 
-ADR 002 widened the task. The listener must route on a classified intent rather than on the
-message type alone, reply with an inline keyboard so a misroute can be corrected in one tap,
-and append every exchange to `conversation_turns`. A follow-up is just the next message in the
-chat: `contextWindow()` supplies the recent turns, and `reply_to_message` only matters when the
-user jumps back to an older one. Three consequences for how it is built:
+The stub classifier returns `save` for every message. A heuristic that guessed `ask` would drop notes, and
+the save reply already carries an Undo button, so the recovery path runs from the first message. Undo
+reads `callback_query.message.reply_to_message` — the save reply is a real Telegram reply, so nothing
+is stored between the two updates. The button data is `undo` or `save`. Undo deletes the object whose
+key is in the reply text and re-routes as `ask`, which answers `not built yet` and offers Save. `ask`,
+`recall-by-filter`, and `forget` stay that reply until spec 002 Task 5.
 
-- The intent classifier is a port with a stub, because `src/core/llm/` does not exist yet.
-  Nothing else in Task 5 should wait on a model.
-- Telegram cannot resolve a `file_id`, so core needs a `FileSource` port implemented in
-  `src/bot/` over `ctx.api`. Letting `grammY` into `src/core/` would undo plan §0.
-- A callback query carries the bot's own message, not the user's. Making the reply an actual
-  Telegram reply puts the original message on `callback_query.message.reply_to_message`, which
-  is how the undo button re-routes with no stored state.
+A photo, document, and voice note download through `FileSource` and upload as that `ObjectKind`. A note
+or a lone URL has no Telegram file, so the bytes go up as `document` (`note.txt` / `link.txt`). The
+reply is `Stored <type> <key>`. Nothing is written to Qdrant: the pipeline TODO sits where summary,
+category, kind, and the vector will attach.
 
-Long polling and the webhook are the same `Bot` object in grammY, so the handlers stay
-transport-agnostic and only the entrypoint differs between local runs and the hosted service.
-`PUBLIC_URL`, `PORT` and `TELEGRAM_WEBHOOK_SECRET` are already validated; an unset `PUBLIC_URL`
-means polling. When the webhook is used, reject any request whose
-`X-Telegram-Bot-Api-Secret-Token` does not match before `grammY` sees it — the admin guard is
-no defence here, because a forged update can claim any `from.id`.
+`webhookCallback` calls `getMe` before it compares the secret, so the HTTP server rejects the header
+first and only then hands the request to grammY. A missing `PUBLIC_URL` deletes any registered webhook
+and long-polls. `npm run dev` is that path.
 
-### Where Task 5 stops
-
-The ingestion pipeline is Task 7 and the classifier's model is Task 6, so Task 5 builds the
-seams and not the intelligence behind them:
-
-- `save` downloads the file, uploads it through `ObjectStorage`, replies with what was stored,
-  and stops at a `TODO` where the pipeline will attach. Nothing is written to Qdrant yet —
-  a `MemoryPayload` needs a `summary`, a `category`, a `kind` and a vector, and all four come
-  from a model that does not exist.
-- The `IntentClassifier` stub returns `save` for everything. A heuristic that guesses `ask`
-  would silently drop notes, and the inline keyboard already covers the miss: the save reply
-  carries an undo button, so the recovery path gets exercised from day one.
-- `ask`, `recall-by-filter` and `forget` reply "not built yet" and are wired in spec 002
-  Task 5. Their behaviour is specified there, not here.
-
-### Done when
-
-1. A photo, document, voice note, URL and plain text each reach R2 with the right `ObjectKind`,
-   and the reply names the stored key.
-2. A message from any id other than `TELEGRAM_ADMIN_ID` is ignored with no reply at all.
-3. The undo button on a save reply resolves the original message through
-   `callback_query.message.reply_to_message`, with nothing stored between the two updates.
-4. `npm run dev` works on long polling with no `PUBLIC_URL` set.
-5. `grammY` appears nowhere under `src/core/`; the bot reaches files through a `FileSource`
-   port that `src/bot/` implements.
+Every exchange is appended to `conversation_turns`. `dispatch` passes `contextWindow()` into the
+classifier. `reply_to_message` is only the explicit jump back to an older turn.
