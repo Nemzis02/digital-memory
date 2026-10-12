@@ -1,7 +1,8 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModel, ModelMessage } from 'ai';
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
+import type { ZodType } from 'zod';
 import type { Env } from '../../config/env.ts';
 import { getEnv } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
@@ -15,13 +16,26 @@ const STRONG_MAX_TOKENS = 8192;
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
 
-type ImageType = (typeof IMAGE_TYPES)[number];
+// Telegram voice notes arrive as audio/ogg; the rest are what a forwarded document can be.
+const FAST_MEDIA = [
+  ...IMAGE_TYPES,
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/wav',
+  'audio/flac',
+  'audio/aac',
+  'application/pdf',
+  'text/plain',
+] as const;
+
+const STRONG_MEDIA = [...IMAGE_TYPES, 'application/pdf'] as const;
 
 export type ModelRole = 'fast' | 'strong';
 
 export type ChatPart =
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'image'; readonly mimeType: string; readonly data: Uint8Array };
+  | { readonly type: 'file'; readonly mimeType: string; readonly data: Uint8Array };
 
 export interface ChatTurn {
   role: 'user' | 'model';
@@ -36,6 +50,7 @@ export interface CompletionRequest {
 export interface ChatModel {
   readonly id: string;
   complete(request: CompletionRequest): Promise<string>;
+  object<T>(request: CompletionRequest, schema: ZodType<T>): Promise<T>;
 }
 
 export interface LlmRouter {
@@ -45,18 +60,19 @@ export interface LlmRouter {
 interface ModelSpec {
   id: string;
   model: LanguageModel;
+  media: readonly string[];
   reasoning?: 'low';
   maxOutputTokens?: number;
 }
 
-function imageType(mimeType: string): ImageType {
-  const match = IMAGE_TYPES.find((type) => type === mimeType);
+function mediaType(spec: ModelSpec, mimeType: string): string {
+  const base = mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
 
-  if (match === undefined) {
-    throw new TypeError(`Unsupported image type ${mimeType}`);
+  if (!spec.media.includes(base)) {
+    throw new TypeError(`${spec.id} cannot read ${mimeType}`);
   }
 
-  return match;
+  return base;
 }
 
 function prepared(request: CompletionRequest): CompletionRequest {
@@ -77,11 +93,11 @@ function prepared(request: CompletionRequest): CompletionRequest {
   return request;
 }
 
-function toMessage(turn: ChatTurn): ModelMessage {
+function toMessage(spec: ModelSpec, turn: ChatTurn): ModelMessage {
   const content = turn.parts.map((part) =>
     part.type === 'text'
       ? { type: 'text' as const, text: part.text }
-      : { type: 'file' as const, mediaType: imageType(part.mimeType), data: part.data },
+      : { type: 'file' as const, mediaType: mediaType(spec, part.mimeType), data: part.data },
   );
 
   if (turn.role === 'model') {
@@ -100,24 +116,38 @@ function requireText(text: string, model: string): string {
 }
 
 function chatModel(spec: ModelSpec): ChatModel {
+  function call(request: CompletionRequest) {
+    const { system, turns } = prepared(request);
+
+    return {
+      model: spec.model,
+      instructions: system,
+      messages: turns.map((turn) => toMessage(spec, turn)),
+      ...(spec.reasoning === undefined ? {} : { reasoning: spec.reasoning }),
+      ...(spec.maxOutputTokens === undefined ? {} : { maxOutputTokens: spec.maxOutputTokens }),
+    };
+  }
+
   return {
     id: spec.id,
     async complete(request) {
-      const { system, turns } = prepared(request);
-
-      const { text } = await generateText({
-        model: spec.model,
-        instructions: system,
-        messages: turns.map(toMessage),
-        ...(spec.reasoning === undefined ? {} : { reasoning: spec.reasoning }),
-        ...(spec.maxOutputTokens === undefined ? {} : { maxOutputTokens: spec.maxOutputTokens }),
-      });
+      const { text } = await generateText(call(request));
 
       const answer = requireText(text, spec.id);
 
       log.debug('completion', { model: spec.id });
 
       return answer;
+    },
+    async object(request, schema) {
+      const { output } = await generateText({
+        ...call(request),
+        output: Output.object({ schema }),
+      });
+
+      log.debug('object', { model: spec.id });
+
+      return output;
     },
   };
 }
@@ -128,6 +158,7 @@ export function createRouter(env: Env = getEnv()): LlmRouter {
   const fast = chatModel({
     id: FAST_MODEL,
     model: google(FAST_MODEL),
+    media: FAST_MEDIA,
     reasoning: 'low',
   });
 
@@ -148,6 +179,7 @@ export function createRouter(env: Env = getEnv()): LlmRouter {
       strong ??= chatModel({
         id: STRONG_MODEL,
         model: createAnthropic({ apiKey })(STRONG_MODEL),
+        media: STRONG_MEDIA,
         maxOutputTokens: STRONG_MAX_TOKENS,
       });
 

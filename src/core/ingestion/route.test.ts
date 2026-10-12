@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConversationLog } from '../conversation/store.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import type { AppendExchange } from '../conversation/store.ts';
+import type { IngestionPipeline } from '../pipeline/graph.ts';
+import type { IngestionInput } from '../pipeline/state.ts';
 import type { InboundMessage } from './inbound.ts';
-import { NOT_BUILT_YET, dispatch, respond } from './route.ts';
+import { NOT_BUILT_YET, dispatch, respond, savedReply } from './route.ts';
 import type { IntentClassifier } from '../retrieval/intent.ts';
-import type { ObjectStorage } from '../storage/object-storage.ts';
 
 function message(text: string, replyToSourceRef?: string): InboundMessage {
   return {
@@ -19,26 +20,31 @@ function message(text: string, replyToSourceRef?: string): InboundMessage {
   };
 }
 
-function storage(): ObjectStorage & { keys: string[] } {
-  const keys: string[] = [];
+const KEY = 'documents/2026/10/11111111-1111-4111-8111-111111111111.txt';
+
+function pipeline(): IngestionPipeline & { ingested: IngestionInput[] } {
+  const ingested: IngestionInput[] = [];
 
   return {
-    keys,
-    async upload(input) {
-      const key = `documents/2026/10/11111111-1111-4111-8111-11111111111${keys.length}.txt`;
-
-      keys.push(key);
-
-      return { key, size: input.body.byteLength, contentType: 'text/plain' };
-    },
-    async presignDownload() {
-      return 'signed';
-    },
-    async openStream() {
-      throw new Error('unused');
-    },
-    async remove() {
+    ingested,
+    async init() {
       return undefined;
+    },
+    async ingest(input) {
+      ingested.push(input);
+
+      return {
+        id: '22222222-2222-4222-8222-222222222222',
+        summary: 'Milk on the shopping list.',
+        category: 'shopping',
+        kind: 'task',
+        tags: ['#groceries'],
+        key: KEY,
+        points: 2,
+      };
+    },
+    async undo() {
+      return true;
     },
   };
 }
@@ -76,11 +82,10 @@ function log(): ConversationLog & { exchanges: AppendExchange[] } {
 describe('respond', () => {
   it('does not call the classifier when the button already picked the intent', async () => {
     const classify = vi.fn();
-    const files = { download: vi.fn() };
-    const objects = storage();
+    const ingestion = pipeline();
 
     const reply = await respond(
-      { classifier: { classify }, files, storage: objects },
+      { source: 'telegram', classifier: { classify }, pipeline: ingestion },
       message('buy milk'),
       [],
       'ask',
@@ -88,7 +93,37 @@ describe('respond', () => {
 
     expect(reply).toEqual({ text: NOT_BUILT_YET, keyboard: 'save' });
     expect(classify).not.toHaveBeenCalled();
-    expect(objects.keys).toEqual([]);
+    expect(ingestion.ingested).toEqual([]);
+  });
+});
+
+describe('savedReply', () => {
+  it('leads with the kind and category, then the summary and the tags', () => {
+    const text = savedReply({
+      id: '22222222-2222-4222-8222-222222222222',
+      summary: 'Tapas at Bar Pepe.',
+      category: 'food',
+      kind: 'recommendation',
+      tags: ['#tapas', '#valencia'],
+      key: KEY,
+      points: 2,
+    });
+
+    expect(text).toBe('Saved recommendation · food\nTapas at Bar Pepe.\n#tapas #valencia');
+  });
+
+  it('omits the tag line when nothing was tagged', () => {
+    const text = savedReply({
+      id: '22222222-2222-4222-8222-222222222222',
+      summary: 'A note.',
+      category: 'other',
+      kind: 'note',
+      tags: [],
+      key: KEY,
+      points: 2,
+    });
+
+    expect(text).toBe('Saved note · other\nA note.');
   });
 });
 
@@ -116,14 +151,14 @@ describe('dispatch', () => {
 
     conversations.exchanges.length = 0;
 
-    const objects = storage();
+    const ingestion = pipeline();
     const sent: string[] = [];
 
     const reply = await dispatch(
       {
+        source: 'telegram',
         classifier,
-        files: { download: vi.fn() },
-        storage: objects,
+        pipeline: ingestion,
         conversations,
         now: () => now,
       },
@@ -137,7 +172,8 @@ describe('dispatch', () => {
 
     expect(seen).toEqual(['old topic', 'old reply']);
     expect(reply.keyboard).toBe('undo');
-    expect(reply.text).toContain(objects.keys[0]);
+    expect(reply.text).toContain('Milk on the shopping list.');
+    expect(ingestion.ingested).toEqual([{ source: 'telegram', message: message('buy milk', '1') }]);
     expect(sent).toEqual([reply.text]);
 
     expect(conversations.exchanges[0]).toMatchObject({

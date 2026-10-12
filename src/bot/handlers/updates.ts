@@ -3,7 +3,6 @@ import type { CallbackQuery, Message, MaybeInaccessibleMessage, User } from 'gra
 import { logger } from '../../core/logging/logger.ts';
 import { dispatch } from '../../core/ingestion/route.ts';
 import type { RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
-import { keyFromStoredReply } from '../../core/ingestion/save.ts';
 import type { InboundFile, InboundMessage } from '../../core/ingestion/inbound.ts';
 import { turnBody } from '../../core/ingestion/inbound.ts';
 
@@ -201,14 +200,12 @@ export async function handleCallback(ctx: Context, deps: RouteDeps): Promise<voi
 
   await ctx.answerCallbackQuery();
 
-  if (action === CALLBACK.undo && message.text !== undefined) {
-    const key = keyFromStoredReply(message.text);
-
-    if (key !== undefined) {
-      await deps.storage.remove(key).catch((error: unknown) => {
-        log.error('failed to remove stored object', { error, key });
+  if (action === CALLBACK.undo) {
+    await deps.pipeline
+      .undo({ source: deps.source, sourceRef: original.sourceRef })
+      .catch((error: unknown) => {
+        log.error('failed to undo the ingestion', { error, sourceRef: original.sourceRef });
       });
-    }
   }
 
   try {

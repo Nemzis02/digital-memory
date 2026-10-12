@@ -1,6 +1,7 @@
 # Implementation Tasks: 002 Retrieval
 
-Unblocked. Dense vectors are 1536, from `gemini-embedding-2` (spec 001 Task 6).
+Unblocked. Dense vectors are 1536, from `gemini-embedding-2` (spec 001 Task 6). Every memory has
+at least one child, so `ask()` can filter on `isChild` without missing the short ones.
 
 - [ ] Task 1: `IntentClassifier` port and its structured-output implementation over the fast
       model, returning one of `save`, `ask`, `recall-by-filter`, `forget` plus filled slots.

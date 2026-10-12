@@ -6,7 +6,7 @@
 - [x] Task 4: Implement Qdrant client (`src/core/vector/qdrant.ts`) with Hybrid Search collection init.
 - [x] Task 5: Build basic `grammY` Telegram bot listener (`src/bot/index.ts`).
 - [x] Task 6: Implement the LLM router and embeddings (`src/core/llm/`); settles `DENSE_VECTOR_SIZE`.
-- [ ] Task 7: Assemble the LangGraph ingestion pipeline (`src/core/pipeline/`) per plan §2.
+- [x] Task 7: Assemble the LangGraph ingestion pipeline (`src/core/pipeline/`) per plan §2.
 
 The read path is spec `002-retrieval`. The MCP server is Phase 2 and has no spec yet. Anything
 not listed above is deferred on purpose, not forgotten.
@@ -156,7 +156,7 @@ item always lands on the same point, so a retried webhook overwrites rather than
 | `src/core/retrieval/intent.ts`      | `Intent` union, `IntentClassifier` port, `stubIntentClassifier()`                       |
 | `src/core/ingestion/file-source.ts` | `FileSource` port. grammY never enters `src/core/`                                      |
 | `src/core/ingestion/inbound.ts`     | Transport-neutral `InboundMessage`, `turnBody()`                                        |
-| `src/core/ingestion/save.ts`        | Download + `ObjectStorage.upload`, `storedReply()` / key parser                         |
+| `src/core/ingestion/save.ts`        | Download + `ObjectStorage.upload`, `storedReply()` / key parser (replaced in Task 7)    |
 | `src/core/ingestion/route.ts`       | `respond()` / `dispatch()`. Save uploads; the other three intents reply `not built yet` |
 | `src/core/conversation/store.ts`    | Drizzle `ConversationLog`: upsert user + chat, append both turns                        |
 | `src/bot/index.ts`                  | Composition root. `PUBLIC_URL` unset means long polling                                 |
@@ -214,3 +214,50 @@ needs `LLM_API_KEY`, and `model('strong')` throws when the answer key is absent.
 limited to jpeg, png, gif, and webp, the set both models accept. Provider calls go through the
 Vercel AI SDK and stop at `src/core/llm/`; the lint rule is what keeps a transport from growing
 its own client. A gateway stays a registry swap. See ADR 003.
+
+## Task 7 — Done (2026-10-12)
+
+| File                             | Purpose                                                               |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `src/core/pipeline/state.ts`     | `IngestionState` channels, `StoredFile`, `Enrichment`, state guards   |
+| `src/core/pipeline/deps.ts`      | `PipelineDeps`: the six ports a node may reach for                    |
+| `src/core/pipeline/graph.ts`     | Graph assembly, `PostgresSaver`, `ingest()` / `undo()` / `init()`     |
+| `src/core/pipeline/nodes/*.ts`   | receive, storeFile, extract, enrich, chunk, index                     |
+| `src/core/pipeline/url.ts`       | `UrlFetcher` over `fetch`: 10 s timeout, 5 MB cap, http/https only    |
+| `src/core/pipeline/article.ts`   | `@mozilla/readability` over `linkedom`, with a tag-stripping fallback |
+| `src/core/pipeline/chunk.ts`     | Character splitter, 800 chars with 100 of overlap                     |
+| `src/core/pipeline/undo.ts`      | `undoIngest()`: parent, children, then the object                     |
+| `src/core/pipeline/**/*.test.ts` | 41 vitest cases, the graph end to end against fakes                   |
+
+**No bytes live in the graph state.** `storeFile` uploads and records only the key and content
+type; `extract` reads the object back through `openStream`. A checkpoint resumed an hour later
+therefore never needs the Telegram `getFile` URL that has since expired, and a checkpoint row
+stays small. The thread id is `<source>:<source_ref>`, so a retried update resumes its own run,
+and `memoryId()` makes the replayed write overwrite its own point.
+
+**Chunking always emits a parent and at least one child**, even for a one-line note whose child
+repeats it. Spec 002 searches children and fetches parents; a short memory stored only as a
+parent would be invisible to that query. The storage node embeds the unique texts, so the
+duplicated pair still costs one embedding. What gets embedded is the summary, location and tags
+followed by the extracted text — never the extracted text alone, because `embedSparse` rejects
+a blank and a spreadsheet or a photo of a wall yields nothing.
+
+One multimodal path replaces three extractors: `ChatPart` widened from an image to a generic
+file part, and photos, PDFs and ogg/opus voice notes all go to `gemini-3.8-flash` as bytes. The
+media allowlist moved onto the model spec, so Claude still refuses audio. A document that is
+neither PDF nor text is stored with no `original_text`, and enrichment classifies it from the
+file name. A link is fetched and the HTML archived; an unreachable page falls back to storing
+the address, because a link worth saving is still worth saving when the site is down.
+
+`ChatModel.object()` was added here rather than in spec 002 — enrichment is the first caller of
+structured output, and the intent classifier will be the second.
+
+The save reply is now the kind, the category, the summary and the tags. **Undo therefore stopped
+parsing the R2 key out of the reply text**: `keyFromStoredReply()` and `save.ts` are gone, and
+`undoIngest()` derives the parent id from the original message instead. It deletes the children
+too — a child is reachable only through its parent, so a parent-only delete would leave points
+that still match a search and can never be removed.
+
+Enrichment is deliberately more permissive than its prompt: tags are slugged, de-duplicated and
+capped in code, and a blank summary falls back to the first line. A rejected response costs the
+whole ingestion, which is worse than a tidy-up.

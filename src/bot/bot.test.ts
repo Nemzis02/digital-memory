@@ -2,10 +2,11 @@ import type { Update, UserFromGetMe } from 'grammy/types';
 import { describe, expect, it } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
 import type { ConversationTurn } from '../core/conversation/context.ts';
-import type { FileSource } from '../core/ingestion/file-source.ts';
+import { memoryId } from '../core/memory/id.ts';
+import type { IngestionPipeline } from '../core/pipeline/graph.ts';
+import type { IngestionInput } from '../core/pipeline/state.ts';
+import type { UndoTarget } from '../core/pipeline/undo.ts';
 import { stubIntentClassifier } from '../core/retrieval/intent.ts';
-import { objectKey } from '../core/storage/content.ts';
-import type { ObjectStorage, UploadInput } from '../core/storage/object-storage.ts';
 import { createBot } from './bot.ts';
 
 const TOKEN = '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // gitleaks:allow
@@ -27,6 +28,8 @@ const ME: UserFromGetMe = {
 };
 
 const ADMIN = 42;
+
+const KEY = 'documents/2026/10/11111111-1111-4111-8111-111111111111.txt';
 
 interface Sent {
   method: string;
@@ -65,48 +68,38 @@ function memoryLog(): ConversationLog & { exchanges: AppendExchange[] } {
   };
 }
 
-function recordingStorage(): {
-  storage: ObjectStorage;
-  uploads: UploadInput[];
-  removed: string[];
-  keys: string[];
+function recordingPipeline(): {
+  pipeline: IngestionPipeline;
+  ingested: IngestionInput[];
+  undone: UndoTarget[];
 } {
-  const uploads: UploadInput[] = [];
-  const removed: string[] = [];
-  const keys: string[] = [];
+  const ingested: IngestionInput[] = [];
+  const undone: UndoTarget[] = [];
 
   return {
-    uploads,
-    removed,
-    keys,
-    storage: {
-      upload(input) {
-        uploads.push(input);
-
-        const extension =
-          input.fileName?.split('.').pop() ??
-          (input.kind === 'photo' ? 'jpg' : input.kind === 'voice' ? 'ogg' : 'bin');
-
-        const key = objectKey(input.kind, extension);
-
-        keys.push(key);
+    ingested,
+    undone,
+    pipeline: {
+      init() {
+        return Promise.resolve();
+      },
+      ingest(input) {
+        ingested.push(input);
 
         return Promise.resolve({
-          key,
-          size: input.body.byteLength,
-          contentType: input.contentType ?? 'application/octet-stream',
+          id: memoryId(input.source, input.message.sourceRef),
+          summary: `Filed one ${input.message.type}.`,
+          category: 'other' as const,
+          kind: 'note' as const,
+          tags: ['#inbox'],
+          key: KEY,
+          points: 2,
         });
       },
-      presignDownload() {
-        return Promise.resolve('signed');
-      },
-      openStream() {
-        return Promise.reject(new Error('unused'));
-      },
-      remove(key) {
-        removed.push(key);
+      undo(target) {
+        undone.push(target);
 
-        return Promise.resolve();
+        return Promise.resolve(true);
       },
     },
   };
@@ -115,27 +108,16 @@ function recordingStorage(): {
 function harness() {
   const sent: Sent[] = [];
   let messageId = 50;
-  const downloads: string[] = [];
-  const bytes = new Uint8Array([1, 2, 3, 4]);
 
-  const files: FileSource = {
-    download(fileId) {
-      downloads.push(fileId);
-
-      return Promise.resolve(bytes);
-    },
-  };
-
-  const objects = recordingStorage();
+  const pipeline = recordingPipeline();
   const conversations = memoryLog();
 
   const bot = createBot({
     token: TOKEN,
     adminId: ADMIN,
     classifier: stubIntentClassifier(),
-    storage: objects.storage,
+    pipeline: pipeline.pipeline,
     conversations,
-    files,
   });
 
   bot.botInfo = ME;
@@ -161,7 +143,7 @@ function harness() {
     return Promise.resolve({ ok: true as const, result: true as const } as never);
   });
 
-  return { bot, sent, downloads, bytes, ...objects, conversations };
+  return { bot, sent, ...pipeline, conversations };
 }
 
 function person(id: number) {
@@ -175,25 +157,14 @@ function update(body: Record<string, unknown>): Update {
 }
 
 describe('createBot', () => {
-  it('stores each inbound kind and names the key in a reply to that message', async () => {
-    const { bot, sent, downloads, bytes, uploads, keys } = harness();
+  it('maps each inbound kind onto the pipeline and replies to that message', async () => {
+    const { bot, sent, ingested } = harness();
 
     const cases = [
-      {
-        type: 'text',
-        kind: 'document',
-        message: { text: 'buy milk' },
-        body: 'buy milk',
-      },
-      {
-        type: 'url',
-        kind: 'document',
-        message: { text: 'https://example.com/a' },
-        body: 'https://example.com/a',
-      },
+      { type: 'text', message: { text: 'buy milk' } },
+      { type: 'url', message: { text: 'https://example.com/a' } },
       {
         type: 'photo',
-        kind: 'photo',
         message: {
           photo: [
             { file_id: 'small', file_unique_id: 's', width: 1, height: 1 },
@@ -204,7 +175,6 @@ describe('createBot', () => {
       },
       {
         type: 'document',
-        kind: 'document',
         message: {
           document: {
             file_id: 'doc',
@@ -217,7 +187,6 @@ describe('createBot', () => {
       },
       {
         type: 'voice',
-        kind: 'voice',
         message: {
           voice: { file_id: 'voc', file_unique_id: 'v', duration: 1, mime_type: 'audio/ogg' },
         },
@@ -238,21 +207,22 @@ describe('createBot', () => {
         }),
       );
 
-      expect(uploads[index]?.kind).toBe(item.kind);
-      expect(sent[index]?.payload.text).toBe(`Stored ${item.type} ${keys[index]}`);
+      const inbound = ingested[index]?.message;
+
+      expect(ingested[index]?.source).toBe('telegram');
+      expect(inbound?.type).toBe(item.type);
+      expect(inbound?.sourceRef).toBe(String(10 + index));
+      expect(sent[index]?.payload.text).toContain(`Filed one ${item.type}.`);
       expect(sent[index]?.payload.reply_parameters).toEqual({ message_id: 10 + index });
 
-      if ('body' in item) {
-        expect(new TextDecoder().decode(uploads[index]?.body)).toBe(item.body);
-      } else {
-        expect(uploads[index]?.body).toEqual(bytes);
-        expect(downloads).toContain(item.fileId);
+      if ('fileId' in item) {
+        expect(inbound?.file?.fileId).toBe(item.fileId);
       }
     }
   });
 
   it('ignores anyone who is not the admin', async () => {
-    const { bot, sent, uploads } = harness();
+    const { bot, sent, ingested } = harness();
 
     await bot.handleUpdate(
       update({
@@ -267,11 +237,11 @@ describe('createBot', () => {
     );
 
     expect(sent).toEqual([]);
-    expect(uploads).toEqual([]);
+    expect(ingested).toEqual([]);
   });
 
-  it('reroutes through reply_to_message and stores nothing between the two updates', async () => {
-    const { bot, sent, uploads, removed, keys, conversations } = harness();
+  it('undoes by the original message id and can then save it again', async () => {
+    const { bot, sent, ingested, undone, conversations } = harness();
 
     const original = {
       message_id: 10,
@@ -287,7 +257,7 @@ describe('createBot', () => {
 
     const saved = replies()[0];
 
-    expect(saved?.payload.text).toBe(`Stored text ${keys[0]}`);
+    expect(saved?.payload.text).toContain('Filed one text.');
 
     const markup = saved?.payload.reply_markup as {
       inline_keyboard: { text: string; callback_data: string }[][];
@@ -313,8 +283,8 @@ describe('createBot', () => {
       }),
     );
 
-    expect(removed).toEqual([keys[0]]);
-    expect(uploads).toHaveLength(1);
+    expect(undone).toEqual([{ source: 'telegram', sourceRef: '10' }]);
+    expect(ingested).toHaveLength(1);
 
     expect(replies()[1]?.payload).toMatchObject({
       text: 'not built yet',
@@ -344,13 +314,13 @@ describe('createBot', () => {
       }),
     );
 
-    expect(uploads).toHaveLength(2);
-    expect(replies()[2]?.payload.text).toBe(`Stored text ${keys[1]}`);
+    expect(ingested).toHaveLength(2);
+    expect(replies()[2]?.payload.text).toContain('Filed one text.');
     expect(replies()[2]?.payload.reply_parameters).toEqual({ message_id: 10 });
   });
 
   it('answers a callback that has no original message', async () => {
-    const { bot, sent } = harness();
+    const { bot, sent, undone } = harness();
 
     await bot.handleUpdate(
       update({
@@ -363,7 +333,7 @@ describe('createBot', () => {
             message_id: 51,
             date: 1_700_000_001,
             chat: { id: 7, type: 'private' },
-            text: 'Stored text documents/2026/10/11111111-1111-4111-8111-111111111111.txt',
+            text: 'Saved note · other',
           },
         },
       }),
@@ -371,5 +341,6 @@ describe('createBot', () => {
 
     expect(sent.map((call) => call.method)).toEqual(['answerCallbackQuery']);
     expect(sent[0]?.payload).toMatchObject({ text: 'Original message is gone' });
+    expect(undone).toEqual([]);
   });
 });

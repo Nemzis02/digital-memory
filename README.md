@@ -7,7 +7,7 @@
 ## ✨ Features & Architecture
 
 - **Multi-modal Telegram Ingestion:** Ingests photos, PDF documents, URLs, notes, and voice messages in real time via `grammY`.
-- **Hybrid RAG Pipeline:** Combines dense vector search and sparse (BM25) indexing in **Qdrant Cloud** with metadata auto-tagging (`category`, `city`, `tags`).
+- **Hybrid RAG Pipeline:** Combines dense vector search and sparse (BM25) indexing in **Qdrant Cloud** with metadata auto-tagging (`category`, `kind`, `location`, `tags`) and parent-child chunking.
 - **Private Cloud Storage:** Secure asset storage in **Cloudflare R2** with ephemeral Pre-signed URLs (no public links).
 - **Durable State:** **PostgreSQL** via **Drizzle ORM** for OAuth2 sessions, tokens and user metadata, and as the LangGraph checkpoint store.
 - **IDE Access via MCP:** Native connection to Cursor/Windsurf via Server-Sent Events (SSE), protected by **Telegram OAuth2 SSO**.
@@ -19,9 +19,10 @@
 
 - **Runtime & Language:** Node.js (ESM), TypeScript
 - **Telegram Framework:** `grammY`
-- **Orchestration & RAG:** `@langchain/langgraph`, Qdrant Cloud
+- **Orchestration & RAG:** `@langchain/langgraph` with `@langchain/langgraph-checkpoint-postgres`, Qdrant Cloud
 - **Models:** Vercel AI SDK (`ai`) over `@ai-sdk/google` (`gemini-3.8-flash`, `gemini-embedding-2`) and `@ai-sdk/anthropic` (`claude-sonnet-5-5`)
 - **Object Storage:** Cloudflare R2 (`@aws-sdk/client-s3`)
+- **Article Extraction:** `@mozilla/readability` over `linkedom` for saved links
 - **Protocol:** `@modelcontextprotocol/sdk` (MCP)
 
 ---

@@ -1,10 +1,12 @@
 import '../config/load-env.ts';
+import { Api } from 'grammy';
 import { getEnv } from '../config/env.ts';
 import { createConversationLog } from '../core/conversation/store.ts';
 import { closeDatabase } from '../core/db/client.ts';
 import { logger } from '../core/logging/logger.ts';
+import { ingestionPipeline } from '../core/pipeline/graph.ts';
 import { stubIntentClassifier } from '../core/retrieval/intent.ts';
-import { r2Storage } from '../core/storage/r2.ts';
+import { telegramFileSource } from './files.ts';
 import { start } from './listen.ts';
 
 const log = logger.child({ module: 'bot' });
@@ -18,12 +20,16 @@ async function shutdown(close: () => Promise<void>, signal: NodeJS.Signals): Pro
 async function main(): Promise<void> {
   const env = getEnv();
 
+  const files = telegramFileSource(new Api(env.TELEGRAM_BOT_TOKEN), env.TELEGRAM_BOT_TOKEN);
+  const pipeline = ingestionPipeline(files);
+  await pipeline.init();
+
   const running = await start(
     {
       token: env.TELEGRAM_BOT_TOKEN,
       adminId: env.TELEGRAM_ADMIN_ID,
       classifier: stubIntentClassifier(),
-      storage: r2Storage(),
+      pipeline,
       conversations: createConversationLog(),
     },
     {

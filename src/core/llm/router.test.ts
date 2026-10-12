@@ -1,6 +1,7 @@
 import type { LanguageModelV4CallOptions, LanguageModelV4GenerateResult } from '@ai-sdk/provider';
 import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { parseEnv, resetEnvCache } from '../../config/env.ts';
 import type { CompletionRequest } from './router.ts';
 import { createRouter, FAST_MODEL, llmRouter, resetLlmRouter, STRONG_MODEL } from './router.ts';
@@ -157,7 +158,7 @@ describe('createRouter', () => {
       .complete({
         system: 'Read the image.',
         turns: [
-          { role: 'user', parts: [{ type: 'image', mimeType: 'image/png', data }] },
+          { role: 'user', parts: [{ type: 'file', mimeType: 'image/png', data }] },
           { role: 'model', parts: [{ type: 'text', text: 'a receipt' }] },
           { role: 'user', parts: [{ type: 'text', text: 'who is it from?' }] },
         ],
@@ -174,7 +175,38 @@ describe('createRouter', () => {
     ]);
   });
 
-  it('rejects a prefilled model turn, a blank system, an empty turn, and an unsupported image', async () => {
+  it('accepts a voice note and strips the codecs parameter off the sniffed type', async () => {
+    const { fast } = install();
+    const data = new Uint8Array([4, 5]);
+
+    await createRouter(env)
+      .model('fast')
+      .complete({
+        system: 'Transcribe.',
+        turns: [
+          {
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'transcribe this' },
+              { type: 'file', mimeType: 'audio/ogg; codecs=opus', data },
+            ],
+          },
+        ],
+      });
+
+    expect(call(fast).prompt).toMatchObject([
+      { role: 'system', content: 'Transcribe.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'transcribe this' },
+          { type: 'file', mediaType: 'audio/ogg', data: { type: 'data', data } },
+        ],
+      },
+    ]);
+  });
+
+  it('rejects a prefilled model turn, a blank system, an empty turn, and unreadable media', async () => {
     const { fast } = install();
     const router = createRouter(env);
 
@@ -206,7 +238,7 @@ describe('createRouter', () => {
         turns: [
           {
             role: 'user',
-            parts: [{ type: 'image', mimeType: 'image/png', data: new Uint8Array([1]) }],
+            parts: [{ type: 'file', mimeType: 'image/png', data: new Uint8Array([1]) }],
           },
         ],
       }),
@@ -220,14 +252,57 @@ describe('createRouter', () => {
             role: 'user',
             parts: [
               { type: 'text', text: 'what is this?' },
-              { type: 'image', mimeType: 'image/svg+xml', data: new Uint8Array([1]) },
+              { type: 'file', mimeType: 'image/svg+xml', data: new Uint8Array([1]) },
             ],
           },
         ],
       }),
-    ).rejects.toThrow(/Unsupported image type image\/svg\+xml/);
+    ).rejects.toThrow(/gemini-3\.8-flash cannot read image\/svg\+xml/);
 
     expect(fast.doGenerateCalls).toHaveLength(0);
+  });
+
+  it('refuses media the chosen model cannot read even when the other model can', async () => {
+    install();
+
+    await expect(
+      createRouter(withStrong)
+        .model('strong')
+        .complete({
+          system: 'Transcribe.',
+          turns: [
+            {
+              role: 'user',
+              parts: [
+                { type: 'text', text: 'transcribe this' },
+                { type: 'file', mimeType: 'audio/ogg', data: new Uint8Array([1]) },
+              ],
+            },
+          ],
+        }),
+    ).rejects.toThrow(/claude-sonnet-5-5 cannot read audio\/ogg/);
+  });
+
+  it('parses a structured response against the caller schema', async () => {
+    const { fast } = install('{"category":"food","tags":["#paella"]}');
+
+    const schema = z.object({ category: z.enum(['food', 'work']), tags: z.array(z.string()) });
+
+    await expect(
+      createRouter(env).model('fast').object(ask('tapas at Bar Pepe'), schema),
+    ).resolves.toEqual({ category: 'food', tags: ['#paella'] });
+
+    expect(call(fast).responseFormat).toMatchObject({ type: 'json' });
+  });
+
+  it('rejects a structured response that does not match the schema', async () => {
+    install('{"category":"astrology","tags":[]}');
+
+    const schema = z.object({ category: z.enum(['food', 'work']), tags: z.array(z.string()) });
+
+    await expect(
+      createRouter(env).model('fast').object(ask('tapas at Bar Pepe'), schema),
+    ).rejects.toThrow();
   });
 
   it('throws when the fast model returns no text', async () => {
@@ -287,7 +362,7 @@ describe('createRouter', () => {
             role: 'user',
             parts: [
               { type: 'text', text: 'look' },
-              { type: 'image', mimeType: 'image/jpeg', data },
+              { type: 'file', mimeType: 'image/jpeg', data },
             ],
           },
           { role: 'model', parts: [{ type: 'text', text: 'a menu' }] },

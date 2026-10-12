@@ -35,11 +35,13 @@
     "@langchain/core": "^1.2.17",
     "@langchain/langgraph": "^1.4.21",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.6",
+    "@mozilla/readability": "^0.6.0",
     "@qdrant/js-client-rest": "^1.12.0",
     "ai": "^7.0.137",
     "drizzle-orm": "^0.45.4",
     "file-type": "^22.1.1",
     "grammy": "^1.30.0",
+    "linkedom": "^0.18.13",
     "pg": "^8.23.1",
     "zod": "^4.6.5"
   },

@@ -2,12 +2,11 @@ import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import { logger } from '../logging/logger.ts';
+import type { MemorySource } from '../memory/payload.ts';
+import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
 import type { Intent, IntentClassifier } from '../retrieval/intent.ts';
-import type { FileSource } from './file-source.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
-import { storedReply, storeInbound } from './save.ts';
-import type { ObjectStorage } from '../storage/object-storage.ts';
 
 const log = logger.child({ module: 'ingestion/route' });
 
@@ -19,15 +18,21 @@ export interface RouteReply {
 }
 
 export interface RouteDeps {
+  source: MemorySource;
   classifier: IntentClassifier;
-  files: FileSource;
-  storage: ObjectStorage;
+  pipeline: IngestionPipeline;
   conversations: ConversationLog;
   now?: () => Date;
 }
 
+export function savedReply(result: IngestResult): string {
+  return [`Saved ${result.kind} · ${result.category}`, result.summary, result.tags.join(' ')]
+    .filter((line) => line !== '')
+    .join('\n');
+}
+
 export async function respond(
-  deps: Pick<RouteDeps, 'classifier' | 'files' | 'storage'>,
+  deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline'>,
   message: InboundMessage,
   context: readonly ConversationTurn[],
   forced?: Intent,
@@ -39,11 +44,11 @@ export async function respond(
     return { text: NOT_BUILT_YET, keyboard: 'save' };
   }
 
-  const stored = await storeInbound(message, deps.files, deps.storage);
+  const result = await deps.pipeline.ingest({ source: deps.source, message });
 
-  log.info('stored', { type: stored.type, key: stored.key });
+  log.info('ingested', { id: result.id, type: message.type, points: result.points });
 
-  return { text: storedReply(stored.type, stored.key), keyboard: 'undo' };
+  return { text: savedReply(result), keyboard: 'undo' };
 }
 
 export async function dispatch(
