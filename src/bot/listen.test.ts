@@ -1,8 +1,8 @@
 import { Bot } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { listen } from './listen.ts';
-import type { Running } from './listen.ts';
+import { serve } from '../app.ts';
+import type { Running } from '../app.ts';
 
 const TOKEN = '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // gitleaks:allow
 
@@ -48,8 +48,11 @@ describe('listen', () => {
     const bot = botWith(calls);
     const start = vi.spyOn(bot, 'start').mockResolvedValue(undefined);
 
-    running.push(await listen(bot, { port: 0 }));
+    const server = await serve(bot, { port: 0 });
 
+    running.push(server);
+
+    expect((await fetch(`http://127.0.0.1:${server.port}/`)).status).toBe(404);
     expect(calls.map((call) => call.method)).toEqual(['deleteWebhook']);
 
     expect(start).toHaveBeenCalledWith(
@@ -62,7 +65,7 @@ describe('listen', () => {
     const bot = botWith(calls);
     const handled = vi.spyOn(bot, 'handleUpdate');
 
-    const server = await listen(bot, {
+    const server = await serve(bot, {
       port: 0,
       publicUrl: 'https://example.com/app',
       webhookSecret: SECRET,
@@ -101,7 +104,7 @@ describe('listen', () => {
   it('refuses to listen on a webhook without the secret', async () => {
     const bot = new Bot(TOKEN, { botInfo: ME });
 
-    await expect(listen(bot, { port: 0, publicUrl: 'https://example.com' })).rejects.toThrow(
+    await expect(serve(bot, { port: 0, publicUrl: 'https://example.com' })).rejects.toThrow(
       'TELEGRAM_WEBHOOK_SECRET',
     );
   });

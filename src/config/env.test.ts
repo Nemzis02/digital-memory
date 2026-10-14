@@ -25,8 +25,15 @@ describe('parseEnv', () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  it('rejects a blank Anthropic key', () => {
-    expect(() => parseEnv({ ...valid, ANTHROPIC_API_KEY: '   ' })).toThrow(/ANTHROPIC_API_KEY/);
+  it('reads an optional variable left blank as absent', () => {
+    const env = parseEnv({ ...valid, ANTHROPIC_API_KEY: '   ', PUBLIC_URL: '' });
+
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.PUBLIC_URL).toBeUndefined();
+  });
+
+  it('still reports a required variable left blank', () => {
+    expect(() => parseEnv({ ...valid, LLM_API_KEY: '' })).toThrow(/LLM_API_KEY/);
   });
 
   it('rejects a pre-signed URL TTL above 15 minutes', () => {
@@ -49,6 +56,10 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, PUBLIC_URL: 'https://memory.example' })).toThrow(
       /TELEGRAM_WEBHOOK_SECRET/,
     );
+
+    expect(() =>
+      parseEnv({ ...valid, PUBLIC_URL: 'https://memory.example', TELEGRAM_WEBHOOK_SECRET: '' }),
+    ).toThrow(/TELEGRAM_WEBHOOK_SECRET/);
   });
 
   it('allows long polling, where there is no endpoint to forge against', () => {

@@ -81,6 +81,9 @@ describe('createR2Storage', () => {
     expect(clientConfigs[0]).toMatchObject({
       region: 'auto',
       endpoint: 'https://acct.r2.cloudflarestorage.com',
+      forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
   });
 

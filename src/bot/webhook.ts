@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { logger } from '../core/logging/logger.ts';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import { createHttpServer, finish, type HttpRoute } from '../http/server.ts';
 
-const log = logger.child({ module: 'bot/webhook' });
+export { requestPath } from '../http/server.ts';
 
 export const WEBHOOK_PATH = '/telegram/webhook';
 
@@ -26,18 +26,6 @@ export function oneHeader(value: string | string[] | undefined): string | undefi
   return value;
 }
 
-export function requestPath(url: string | undefined): string {
-  if (url === undefined) {
-    return '';
-  }
-
-  try {
-    return new URL(url, 'http://localhost').pathname;
-  } catch {
-    return '';
-  }
-}
-
 export function telegramWebhookUrl(publicUrl: string): string {
   const base = new URL(publicUrl);
 
@@ -50,35 +38,28 @@ export function telegramWebhookUrl(publicUrl: string): string {
   return `${base.origin}${prefix}${WEBHOOK_PATH}`;
 }
 
-function discard(req: IncomingMessage, res: ServerResponse, status: number): void {
-  req.resume();
-  res.writeHead(status).end();
+export function telegramWebhookRoute(options: {
+  secret: string;
+  handle: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+}): HttpRoute {
+  return {
+    method: 'POST',
+    path: WEBHOOK_PATH,
+    handle(req, res) {
+      // webhookCallback calls getMe before it compares the secret, so a forged POST is rejected here.
+      if (!secretHeaderMatches(oneHeader(req.headers[SECRET_HEADER]), options.secret)) {
+        finish(req, res, 401);
+        return;
+      }
+
+      return options.handle(req, res);
+    },
+  };
 }
 
 export function createWebhookServer(options: {
   secret: string;
   handle: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 }): Server {
-  return createServer((req, res) => {
-    if (req.method !== 'POST' || requestPath(req.url) !== WEBHOOK_PATH) {
-      discard(req, res, 404);
-      return;
-    }
-
-    // webhookCallback calls getMe before it compares the secret, so a forged POST is rejected here.
-    if (!secretHeaderMatches(oneHeader(req.headers[SECRET_HEADER]), options.secret)) {
-      discard(req, res, 401);
-      return;
-    }
-
-    void Promise.resolve()
-      .then(() => options.handle(req, res))
-      .catch((error: unknown) => {
-        log.error('webhook handler failed', { error });
-
-        if (!res.headersSent) {
-          res.writeHead(500).end();
-        }
-      });
-  });
+  return createHttpServer([telegramWebhookRoute(options)]);
 }

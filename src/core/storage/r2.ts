@@ -23,6 +23,9 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
   const client = new S3Client({
     region: 'auto',
     endpoint: r2Endpoint(env),
+    forcePathStyle: true,
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId: env.R2_ACCESS_KEY_ID,
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,

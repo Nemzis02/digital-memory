@@ -4,6 +4,13 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-12 — R2 via the AWS SDK
+
+Use `forcePathStyle`: virtual-hosted `<bucket>.<account>.r2…` is outside the account certificate.
+Set both checksum modes to `WHEN_REQUIRED`; the SDK default sends headers R2 rejects. A new
+account can also return TLS alert 40 with no certificate on the account host itself — the
+endpoint cert is not provisioned yet, and no client option fixes that.
+
 ## 2026-10-12 — Ingestion pipeline
 
 ### A LangGraph node may not share a name with a state channel
@@ -25,13 +32,8 @@ Structured output is `generateText` with `output: Output.object({ schema })`, re
 
 ### TypeScript 7 has no JavaScript compiler API
 
-The npm `typescript` package is a wrapper that execs a Go binary, and
-`require('typescript').createProgram` is `undefined`. Every tool consuming the compiler API is
-therefore blocked — `typescript-eslint@8` declares `typescript: >=4.8.4 <6.1.0` for exactly
-this reason. **Type-aware ESLint and TypeScript 7 are mutually exclusive.**
-
-**Decision:** stay on TS 5.9 with typed ESLint. **Revisit when** `typescript-eslint` raises
-that peer above `<6.1.0`, and bump the compiler then rather than adopting a second linter.
+`typescript` 7 is a Go binary; `createProgram` is gone, and `typescript-eslint@8` peers
+`typescript <6.1.0`. Stay on 5.9 until that peer moves.
 
 ### No `tsx` or `ts-node`: Node strips types natively
 
@@ -70,10 +72,6 @@ fails with "was not found by the project service". Adding it to `include` would 
 Placeholder values in `.env.example` and test fixtures tripped it. Prefer the inline
 `// gitleaks:allow` directive over a path allowlist for `*.test.ts`, which would blind the
 scanner to a real secret pasted into a test later.
-
-### `@qdrant/js-client-rest@1.19.0` pins a vulnerable `undici@7.29.0`
-
-Held at `^7.29.1` through `overrides`. Re-check when the Qdrant client is upgraded.
 
 ### `file-type` returns MIME types carrying parameters
 

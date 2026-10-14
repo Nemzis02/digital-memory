@@ -1,10 +1,9 @@
-import type { Server } from 'node:http';
 import { webhookCallback } from 'grammy';
 import type { Bot } from 'grammy';
+import type { Server } from 'node:http';
 import type { Update } from 'grammy/types';
 import { logger } from '../core/logging/logger.ts';
-import { createBot } from './bot.ts';
-import type { BotDependencies } from './bot.ts';
+import { createHttpServer } from '../http/server.ts';
 import { createWebhookServer, telegramWebhookUrl } from './webhook.ts';
 
 const log = logger.child({ module: 'bot/listen' });
@@ -17,29 +16,27 @@ export interface ListenOptions {
   webhookSecret?: string | undefined;
 }
 
-export interface Running {
-  port?: number;
-  close(): Promise<void>;
-}
+export function telegramServer(bot: Bot, options: ListenOptions): Server {
+  if (options.publicUrl === undefined) {
+    return createHttpServer([]);
+  }
 
-function listenOn(server: Server, port: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
+  const secret = options.webhookSecret;
 
-    server.listen(port, () => {
-      server.off('error', reject);
-      resolve();
-    });
+  if (secret === undefined) {
+    throw new Error('TELEGRAM_WEBHOOK_SECRET is required once PUBLIC_URL is set');
+  }
+
+  return createWebhookServer({
+    secret,
+    handle: webhookCallback(bot, 'http', {
+      secretToken: secret,
+      timeoutMilliseconds: 30_000,
+    }),
   });
 }
 
-function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.close((error) => (error === undefined ? resolve() : reject(error)));
-  });
-}
-
-export async function listen(bot: Bot, options: ListenOptions): Promise<Running> {
+export async function activateTelegram(bot: Bot, options: ListenOptions): Promise<void> {
   if (options.publicUrl === undefined) {
     await bot.api.deleteWebhook();
 
@@ -55,43 +52,18 @@ export async function listen(bot: Bot, options: ListenOptions): Promise<Running>
         process.exitCode = 1;
       });
 
-    return {
-      async close() {
-        await bot.stop();
-      },
-    };
-  }
-
-  if (options.webhookSecret === undefined) {
-    throw new Error('TELEGRAM_WEBHOOK_SECRET is required once PUBLIC_URL is set');
+    return;
   }
 
   const secret = options.webhookSecret;
-  const url = telegramWebhookUrl(options.publicUrl);
 
-  const handle = webhookCallback(bot, 'http', {
-    secretToken: secret,
-    timeoutMilliseconds: 30_000,
-  });
-
-  const server = createWebhookServer({ secret, handle });
-
-  try {
-    await listenOn(server, options.port);
-    await bot.api.setWebhook(url, { secret_token: secret, allowed_updates: UPDATES });
-  } catch (error) {
-    server.close();
-    throw error;
+  if (secret === undefined) {
+    throw new Error('TELEGRAM_WEBHOOK_SECRET is required once PUBLIC_URL is set');
   }
 
-  const address = server.address();
-  const port = typeof address === 'object' && address !== null ? address.port : options.port;
+  const url = telegramWebhookUrl(options.publicUrl);
 
-  log.info('webhook listening', { port, path: new URL(url).pathname });
+  await bot.api.setWebhook(url, { secret_token: secret, allowed_updates: UPDATES });
 
-  return { port, close: () => closeServer(server) };
-}
-
-export async function start(deps: BotDependencies, options: ListenOptions): Promise<Running> {
-  return listen(createBot(deps), options);
+  log.info('webhook registered', { path: new URL(url).pathname });
 }

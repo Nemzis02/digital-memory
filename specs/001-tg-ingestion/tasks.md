@@ -4,7 +4,7 @@
 - [x] Task 2: Setup environment config validation (`zod` + built-in `process.loadEnvFile()`).
 - [x] Task 3: Implement Cloudflare R2 client (`src/core/storage/r2.ts`) with Pre-signed URL generation.
 - [x] Task 4: Implement Qdrant client (`src/core/vector/qdrant.ts`) with Hybrid Search collection init.
-- [x] Task 5: Build basic `grammY` Telegram bot listener (`src/bot/index.ts`).
+- [x] Task 5: Build basic `grammY` Telegram bot listener (started from `src/index.ts`).
 - [x] Task 6: Implement the LLM router and embeddings (`src/core/llm/`); settles `DENSE_VECTOR_SIZE`.
 - [x] Task 7: Assemble the LangGraph ingestion pipeline (`src/core/pipeline/`) per plan §2.
 
@@ -159,8 +159,8 @@ item always lands on the same point, so a retried webhook overwrites rather than
 | `src/core/ingestion/save.ts`        | Download + `ObjectStorage.upload`, `storedReply()` / key parser (replaced in Task 7)    |
 | `src/core/ingestion/route.ts`       | `respond()` / `dispatch()`. Save uploads; the other three intents reply `not built yet` |
 | `src/core/conversation/store.ts`    | Drizzle `ConversationLog`: upsert user + chat, append both turns                        |
-| `src/bot/index.ts`                  | Composition root. `PUBLIC_URL` unset means long polling                                 |
-| `src/bot/listen.ts`                 | `deleteWebhook` then `bot.start`, or the webhook server                                 |
+| `src/index.ts`                      | Composition root. One process, HTTP server up in both Telegram modes                    |
+| `src/bot/listen.ts`                 | `deleteWebhook` then `bot.start`, or register the webhook on the shared server          |
 | `src/bot/webhook.ts`                | Rejects a bad `X-Telegram-Bot-Api-Secret-Token` before grammY                           |
 | `src/bot/middleware/admin.ts`       | Drops any `from.id` other than `TELEGRAM_ADMIN_ID`, with no reply                       |
 | `src/bot/files.ts`                  | `FileSource` over `getFile` + `api.telegram.org`                                        |

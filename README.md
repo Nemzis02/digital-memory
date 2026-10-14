@@ -27,6 +27,32 @@
 
 ---
 
+## 🚀 Local Development
+
+Copy `.env.example` to `.env` and fill it in. `POSTGRES_PASSWORD` and `QDRANT_API_KEY` are values you
+choose — `docker-compose.yml` configures the containers to demand them. The credentials that come
+from elsewhere are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_ID` (BotFather), `LLM_API_KEY` (Google AI
+Studio), and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME`
+(Cloudflare, on a bucket with public access left disabled). `ANTHROPIC_API_KEY` is only read once a
+question is asked, and `PUBLIC_URL` with `TELEGRAM_WEBHOOK_SECRET` only when serving a webhook —
+leaving both unset selects long polling, which needs no public address. `npm run dev` starts `src/index.ts`, and that process binds `PORT` either way: Telegram, and later MCP and OAuth, share one HTTP server.
+
+```bash
+npm run db:up        # PostgreSQL and Qdrant; COMPOSE="docker compose" to use Docker
+npm run db:migrate   # must precede the first run: nothing else creates the Drizzle tables
+npm run dev
+```
+
+`npm run dev` creates the Qdrant collection and the LangGraph checkpoint tables itself, both
+idempotently. `npm test` needs no services and no keys.
+
+`npm run test:live` is opt-in and spends real quota: it embeds, calls the models, and writes to R2
+and Qdrant, cleaning up after itself. Set `INGEST_PHOTO`, `INGEST_VOICE` or `INGEST_DOCUMENT` to a
+file path to include that medium; each case is skipped without one. Use files saved out of a real
+Telegram chat, since Telegram re-encodes what it forwards.
+
+---
+
 ## 📁 Repository Structure
 
 ```text
