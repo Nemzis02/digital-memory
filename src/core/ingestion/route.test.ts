@@ -135,7 +135,7 @@ describe('dispatch', () => {
       async classify(input) {
         seen.push(...input.context.map((turn) => turn.body));
 
-        return { intent: 'save' };
+        return { intent: 'save', slots: {} };
       },
     };
 

@@ -3,9 +3,10 @@ import { Api } from 'grammy';
 import { getEnv } from './config/env.ts';
 import { createConversationLog } from './core/conversation/store.ts';
 import { closeDatabase } from './core/db/client.ts';
+import { llmRouter } from './core/llm/router.ts';
 import { logger } from './core/logging/logger.ts';
 import { ingestionPipeline } from './core/pipeline/graph.ts';
-import { stubIntentClassifier } from './core/retrieval/intent.ts';
+import { createIntentClassifier } from './core/retrieval/classifier.ts';
 import { serve } from './app.ts';
 import { createBot } from './bot/bot.ts';
 import { telegramFileSource } from './bot/files.ts';
@@ -20,16 +21,14 @@ async function shutdown(close: () => Promise<void>, signal: NodeJS.Signals): Pro
 
 async function main(): Promise<void> {
   const env = getEnv();
-
   const files = telegramFileSource(new Api(env.TELEGRAM_BOT_TOKEN), env.TELEGRAM_BOT_TOKEN);
   const pipeline = ingestionPipeline(files);
-
   await pipeline.init();
 
   const bot = createBot({
     token: env.TELEGRAM_BOT_TOKEN,
     adminId: env.TELEGRAM_ADMIN_ID,
-    classifier: stubIntentClassifier(),
+    classifier: createIntentClassifier({ router: llmRouter() }),
     pipeline,
     conversations: createConversationLog(),
   });

@@ -7,6 +7,7 @@ describe('stubIntentClassifier', () => {
       stubIntentClassifier().classify({ text: 'what is coming up?', context: [] }),
     ).resolves.toEqual({
       intent: 'save',
+      slots: {},
     });
   });
 });
