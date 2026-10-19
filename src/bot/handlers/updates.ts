@@ -1,7 +1,9 @@
+import type { UUID } from 'node:crypto';
 import { InlineKeyboard, type Context } from 'grammy';
 import type { CallbackQuery, Message, MaybeInaccessibleMessage, User } from 'grammy/types';
+import { z } from 'zod';
 import { logger } from '../../core/logging/logger.ts';
-import { dispatch } from '../../core/ingestion/route.ts';
+import { dispatch, forgetResult } from '../../core/ingestion/route.ts';
 import type { RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
 import type { InboundFile, InboundMessage } from '../../core/ingestion/inbound.ts';
 import { turnBody } from '../../core/ingestion/inbound.ts';
@@ -13,6 +15,10 @@ export const UNSUPPORTED = "Can't store that.";
 const STORE_FAILED = 'Could not store that.';
 
 const CALLBACK = { undo: 'undo', save: 'save' } as const;
+
+const FORGET_PREFIX = 'forget:';
+
+const FORGET_FAILED = 'Could not forget that.';
 
 function displayName(from: User): string {
   return [from.first_name, from.last_name]
@@ -85,17 +91,26 @@ export function inboundFromMessage(message: Message, from: User): InboundMessage
   return { ...base, type: 'text' };
 }
 
-export function replyMarkup(keyboard: RouteReply['keyboard']): InlineKeyboard {
-  return keyboard === 'undo'
-    ? new InlineKeyboard().text('Undo', CALLBACK.undo)
-    : new InlineKeyboard().text('Save', CALLBACK.save);
+export function replyMarkup(reply: RouteReply): InlineKeyboard | undefined {
+  switch (reply.keyboard) {
+    case 'none':
+      return undefined;
+    case 'undo':
+      return new InlineKeyboard().text('Undo', CALLBACK.undo);
+    case 'save':
+      return new InlineKeyboard().text('Save', CALLBACK.save);
+    case 'forget':
+      return new InlineKeyboard().text('Forget', `${FORGET_PREFIX}${reply.parentId}`);
+  }
 }
 
 async function sendReply(ctx: Context, messageId: number, reply: RouteReply): Promise<string> {
+  const markup = replyMarkup(reply);
+
   // The undo button reads callback_query.message.reply_to_message, so this has to be a real reply.
   const sent = await ctx.reply(reply.text, {
     reply_parameters: { message_id: messageId },
-    reply_markup: replyMarkup(reply.keyboard),
+    ...(markup === undefined ? {} : { reply_markup: markup }),
   });
 
   return String(sent.message_id);
@@ -168,6 +183,74 @@ function callbackMessage(callback: CallbackQuery): Message | undefined {
   return message;
 }
 
+function forgetId(data: string): UUID | undefined {
+  if (!data.startsWith(FORGET_PREFIX)) {
+    return undefined;
+  }
+
+  const parsed = z
+    .uuid()
+    .transform((value) => value as UUID)
+    .safeParse(data.slice(FORGET_PREFIX.length));
+
+  return parsed.success ? parsed.data : undefined;
+}
+
+async function confirmForget(
+  ctx: Context,
+  deps: RouteDeps,
+  callback: CallbackQuery,
+  parentId: UUID,
+): Promise<void> {
+  let removed: boolean;
+
+  try {
+    removed = await deps.retrieval.forget(parentId);
+  } catch (error) {
+    log.error('failed to forget', { error, id: parentId });
+
+    await ctx.answerCallbackQuery();
+
+    const message = callbackMessage(callback);
+
+    if (message !== undefined) {
+      await ctx.reply(FORGET_FAILED, {
+        reply_parameters: { message_id: message.message_id },
+      });
+    }
+
+    return;
+  }
+
+  const reply = forgetResult(removed);
+  const message = callbackMessage(callback);
+
+  if (message === undefined) {
+    await ctx.answerCallbackQuery({ text: reply.text });
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
+
+  const sent = await ctx.reply(reply.text, {
+    reply_parameters: { message_id: message.message_id },
+  });
+
+  const name = displayName(callback.from);
+
+  await deps.conversations
+    .append({
+      chatRef: String(message.chat.id),
+      userRef: String(callback.from.id),
+      ...(name === '' ? {} : { displayName: name }),
+      user: { body: 'forget', sourceRef: callback.id },
+      assistant: { body: reply.text, sourceRef: String(sent.message_id) },
+    })
+    .catch((error: unknown) => {
+      log.error('failed to record exchange', { error });
+    });
+}
+
 export async function handleCallback(ctx: Context, deps: RouteDeps): Promise<void> {
   const callback = ctx.callbackQuery;
 
@@ -175,8 +258,26 @@ export async function handleCallback(ctx: Context, deps: RouteDeps): Promise<voi
     return;
   }
 
-  const action =
-    callback.data === CALLBACK.undo || callback.data === CALLBACK.save ? callback.data : undefined;
+  const data = callback.data;
+
+  if (data === undefined) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+
+  if (data.startsWith(FORGET_PREFIX)) {
+    const parentId = forgetId(data);
+
+    if (parentId === undefined) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+
+    await confirmForget(ctx, deps, callback, parentId);
+    return;
+  }
+
+  const action = data === CALLBACK.undo || data === CALLBACK.save ? data : undefined;
 
   const message = callbackMessage(callback);
   const replied = message?.reply_to_message;

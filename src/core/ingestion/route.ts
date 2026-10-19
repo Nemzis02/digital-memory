@@ -1,28 +1,51 @@
+import type { UUID } from 'node:crypto';
 import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import { logger } from '../logging/logger.ts';
-import type { MemorySource } from '../memory/payload.ts';
+import type { MemoryPayload, MemorySource } from '../memory/payload.ts';
 import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
-import type { Intent, IntentClassifier } from '../retrieval/intent.ts';
+import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
+import type { Intent, IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
 
 const log = logger.child({ module: 'ingestion/route' });
 
-export const NOT_BUILT_YET = 'not built yet';
+// sendMessage rejects anything longer, and a synthesised answer can exceed it.
+const TELEGRAM_TEXT_LIMIT = 4096;
 
-export interface RouteReply {
-  text: string;
-  keyboard: 'undo' | 'save';
+const FORGOTTEN = 'Forgotten.';
+
+export interface Retrieval {
+  ask(slots: IntentSlots): Promise<Answer>;
+  recall(slots: IntentSlots): Promise<MemoryPayload[]>;
+  resolveForget(slots: IntentSlots): Promise<MemoryPayload | undefined>;
+  forget(parentId: UUID): Promise<boolean>;
 }
+
+export type RouteReply =
+  | { text: string; keyboard: 'undo' | 'save' }
+  | { text: string; keyboard: 'forget'; parentId: UUID }
+  | { text: string; keyboard: 'none' };
 
 export interface RouteDeps {
   source: MemorySource;
   classifier: IntentClassifier;
   pipeline: IngestionPipeline;
   conversations: ConversationLog;
+  retrieval: Retrieval;
   now?: () => Date;
+}
+
+function clip(text: string): string {
+  return text.length <= TELEGRAM_TEXT_LIMIT ? text : text.slice(0, TELEGRAM_TEXT_LIMIT);
+}
+
+function present(reply: RouteReply): RouteReply {
+  const text = clip(reply.text);
+
+  return text === reply.text ? reply : { ...reply, text };
 }
 
 export function savedReply(result: IngestResult): string {
@@ -31,24 +54,105 @@ export function savedReply(result: IngestResult): string {
     .join('\n');
 }
 
+function day(epoch: number): string {
+  return new Date(epoch * 1000).toISOString().slice(0, 10);
+}
+
+function formatAnswer(answer: Answer): string {
+  const lines = [answer.answer];
+
+  for (const citation of answer.citations) {
+    lines.push('', citation.summary);
+
+    if (citation.url !== undefined) {
+      lines.push(citation.url);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function formatRecall(slots: IntentSlots, memories: readonly MemoryPayload[]): string {
+  if (memories.length === 0) {
+    return NOTHING_FOUND;
+  }
+
+  return memories
+    .map((memory) => {
+      const epoch =
+        slots.orderBy === 'event_at' ? (memory.event_at ?? memory.created_at) : memory.created_at;
+
+      return `${day(epoch)} · ${memory.summary}`;
+    })
+    .join('\n');
+}
+
+export function forgetResult(removed: boolean): RouteReply {
+  return present({ text: removed ? FORGOTTEN : NOTHING_FOUND, keyboard: 'none' });
+}
+
+function slotsFor(intent: Intent, slots: IntentSlots, message: InboundMessage): IntentSlots {
+  if (intent !== 'ask' && intent !== 'forget') {
+    return slots;
+  }
+
+  const query = slots.query?.trim();
+
+  if (query === undefined || query === '') {
+    return { ...slots, query: turnBody(message) };
+  }
+
+  return query === slots.query ? slots : { ...slots, query };
+}
+
 export async function respond(
-  deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline'>,
+  deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline' | 'retrieval'>,
   message: InboundMessage,
   context: readonly ConversationTurn[],
   forced?: Intent,
 ): Promise<RouteReply> {
-  const intent =
-    forced ?? (await deps.classifier.classify({ text: turnBody(message), context })).intent;
+  const classified =
+    forced === undefined
+      ? await deps.classifier.classify({ text: turnBody(message), context })
+      : { intent: forced, slots: forced === 'save' ? {} : { query: turnBody(message) } };
 
-  if (intent !== 'save') {
-    return { text: NOT_BUILT_YET, keyboard: 'save' };
+  const slots = slotsFor(classified.intent, classified.slots, message);
+
+  switch (classified.intent) {
+    case 'save': {
+      const result = await deps.pipeline.ingest({ source: deps.source, message });
+
+      log.info('ingested', { id: result.id, type: message.type, points: result.points });
+
+      return present({ text: savedReply(result), keyboard: 'undo' });
+    }
+
+    case 'ask': {
+      const answer = await deps.retrieval.ask(slots);
+
+      return present({ text: formatAnswer(answer), keyboard: 'save' });
+    }
+
+    case 'recall-by-filter': {
+      const memories = await deps.retrieval.recall(slots);
+
+      return present({ text: formatRecall(slots, memories), keyboard: 'save' });
+    }
+
+    case 'forget': {
+      const parent = await deps.retrieval.resolveForget(slots);
+
+      if (parent === undefined) {
+        return present({ text: NOTHING_FOUND, keyboard: 'save' });
+      }
+
+      return present({
+        text: `Forget ${parent.summary}?`,
+        keyboard: 'forget',
+        parentId: parent.id,
+      });
+    }
   }
-
-  const result = await deps.pipeline.ingest({ source: deps.source, message });
-
-  log.info('ingested', { id: result.id, type: message.type, points: result.points });
-
-  return { text: savedReply(result), keyboard: 'undo' };
 }
 
 export async function dispatch(

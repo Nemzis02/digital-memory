@@ -1,11 +1,14 @@
+import type { UUID } from 'node:crypto';
 import type { Update, UserFromGetMe } from 'grammy/types';
 import { describe, expect, it } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
 import type { ConversationTurn } from '../core/conversation/context.ts';
+import type { Retrieval } from '../core/ingestion/route.ts';
 import { memoryId } from '../core/memory/id.ts';
 import type { IngestionPipeline } from '../core/pipeline/graph.ts';
 import type { IngestionInput } from '../core/pipeline/state.ts';
 import type { UndoTarget } from '../core/pipeline/undo.ts';
+import { NOTHING_FOUND } from '../core/retrieval/answer.ts';
 import { stubIntentClassifier } from '../core/retrieval/intent.ts';
 import { createBot } from './bot.ts';
 
@@ -105,7 +108,31 @@ function recordingPipeline(): {
   };
 }
 
-function harness() {
+const PARENT = '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12';
+
+function recordingRetrieval(removed = true): Retrieval & { forgotten: UUID[] } {
+  const forgotten: UUID[] = [];
+
+  return {
+    forgotten,
+    ask() {
+      return Promise.resolve({ answer: NOTHING_FOUND, citations: [] });
+    },
+    recall() {
+      return Promise.resolve([]);
+    },
+    resolveForget() {
+      return Promise.resolve(undefined);
+    },
+    forget(parentId) {
+      forgotten.push(parentId);
+
+      return Promise.resolve(removed);
+    },
+  };
+}
+
+function harness(retrieval: Retrieval & { forgotten: UUID[] } = recordingRetrieval()) {
   const sent: Sent[] = [];
   let messageId = 50;
 
@@ -118,6 +145,7 @@ function harness() {
     classifier: stubIntentClassifier(),
     pipeline: pipeline.pipeline,
     conversations,
+    retrieval,
   });
 
   bot.botInfo = ME;
@@ -143,7 +171,7 @@ function harness() {
     return Promise.resolve({ ok: true as const, result: true as const } as never);
   });
 
-  return { bot, sent, ...pipeline, conversations };
+  return { bot, sent, ...pipeline, conversations, forgotten: retrieval.forgotten };
 }
 
 function person(id: number) {
@@ -286,10 +314,18 @@ describe('createBot', () => {
     expect(undone).toEqual([{ source: 'telegram', sourceRef: '10' }]);
     expect(ingested).toHaveLength(1);
 
-    expect(replies()[1]?.payload).toMatchObject({
-      text: 'not built yet',
+    const answered = replies()[1];
+
+    expect(answered?.payload).toMatchObject({
+      text: NOTHING_FOUND,
       reply_parameters: { message_id: 10 },
     });
+
+    const answeredMarkup = answered?.payload.reply_markup as {
+      inline_keyboard: { text: string; callback_data: string }[][];
+    };
+
+    expect(answeredMarkup.inline_keyboard[0]?.[0]).toEqual({ text: 'Save', callback_data: 'save' });
 
     expect(conversations.exchanges.map((exchange) => exchange.user.body)).toEqual([
       'buy milk',
@@ -307,7 +343,7 @@ describe('createBot', () => {
             message_id: 52,
             date: 1_700_000_002,
             chat: { id: 7, type: 'private' },
-            text: 'not built yet',
+            text: NOTHING_FOUND,
             reply_to_message: original,
           },
         },
@@ -342,5 +378,89 @@ describe('createBot', () => {
     expect(sent.map((call) => call.method)).toEqual(['answerCallbackQuery']);
     expect(sent[0]?.payload).toMatchObject({ text: 'Original message is gone' });
     expect(undone).toEqual([]);
+  });
+
+  it('forgets the confirmed parent and does not ingest it', async () => {
+    const retrieval = recordingRetrieval();
+    const { bot, sent, ingested, forgotten, conversations } = harness(retrieval);
+
+    await bot.handleUpdate(
+      update({
+        callback_query: {
+          id: 'cb-forget',
+          from: person(ADMIN),
+          chat_instance: 'ci',
+          data: `forget:${PARENT}`,
+          message: {
+            message_id: 51,
+            date: 1_700_000_001,
+            chat: { id: 7, type: 'private' },
+            text: 'Forget Appointment card?',
+          },
+        },
+      }),
+    );
+
+    expect(forgotten).toEqual([PARENT]);
+    expect(ingested).toEqual([]);
+
+    const replies = sent.filter((call) => call.method === 'sendMessage');
+
+    expect(replies).toHaveLength(1);
+    expect(replies[0]?.payload.text).toBe('Forgotten.');
+    expect(replies[0]?.payload.reply_markup).toBeUndefined();
+    expect(replies[0]?.payload.reply_parameters).toEqual({ message_id: 51 });
+    expect(conversations.exchanges.map((exchange) => exchange.user.body)).toEqual(['forget']);
+  });
+
+  it('does not delete when the forget callback is not a parent id', async () => {
+    const { bot, sent, forgotten } = harness();
+
+    await bot.handleUpdate(
+      update({
+        callback_query: {
+          id: 'cb-forget',
+          from: person(ADMIN),
+          chat_instance: 'ci',
+          data: 'forget:not-a-uuid',
+          message: {
+            message_id: 51,
+            date: 1_700_000_001,
+            chat: { id: 7, type: 'private' },
+            text: 'Forget Appointment card?',
+          },
+        },
+      }),
+    );
+
+    expect(forgotten).toEqual([]);
+    expect(sent.map((call) => call.method)).toEqual(['answerCallbackQuery']);
+  });
+
+  it('says nothing found when the confirmed parent is already gone', async () => {
+    const { bot, sent, forgotten } = harness(recordingRetrieval(false));
+
+    await bot.handleUpdate(
+      update({
+        callback_query: {
+          id: 'cb-forget',
+          from: person(ADMIN),
+          chat_instance: 'ci',
+          data: `forget:${PARENT}`,
+          message: {
+            message_id: 51,
+            date: 1_700_000_001,
+            chat: { id: 7, type: 'private' },
+            text: 'Forget Appointment card?',
+          },
+        },
+      }),
+    );
+
+    expect(forgotten).toEqual([PARENT]);
+
+    expect(sent.filter((call) => call.method === 'sendMessage')[0]?.payload.text).toBe(
+      NOTHING_FOUND,
+    );
   });
 });

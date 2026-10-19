@@ -1,12 +1,15 @@
+import type { UUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationLog } from '../conversation/store.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import type { AppendExchange } from '../conversation/store.ts';
+import type { MemoryPayload } from '../memory/payload.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
 import type { IngestionInput } from '../pipeline/state.ts';
+import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
+import type { IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
 import type { InboundMessage } from './inbound.ts';
-import { NOT_BUILT_YET, dispatch, respond, savedReply } from './route.ts';
-import type { IntentClassifier } from '../retrieval/intent.ts';
+import { dispatch, forgetResult, respond, savedReply, type Retrieval } from './route.ts';
 
 function message(text: string, replyToSourceRef?: string): InboundMessage {
   return {
@@ -49,6 +52,65 @@ function pipeline(): IngestionPipeline & { ingested: IngestionInput[] } {
   };
 }
 
+const PARENT = '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12';
+
+const dentist: MemoryPayload = {
+  id: PARENT,
+  source: 'telegram',
+  source_ref: 'dentist',
+  type: 'text',
+  original_text: 'dentist Tuesday at 10',
+  summary: 'Appointment card',
+  metadata: { category: 'health', kind: 'event', tags: [] },
+  chunking: { is_child: false },
+  created_at: 1_700_000_000,
+  event_at: 1_772_000_000,
+};
+
+function spyRetrieval(options?: {
+  answer?: Answer;
+  memories?: MemoryPayload[];
+  parent?: MemoryPayload;
+  removed?: boolean;
+}): Retrieval & {
+  asks: IntentSlots[];
+  recalls: IntentSlots[];
+  resolved: IntentSlots[];
+  forgotten: UUID[];
+} {
+  const asks: IntentSlots[] = [];
+  const recalls: IntentSlots[] = [];
+  const resolved: IntentSlots[] = [];
+  const forgotten: UUID[] = [];
+
+  return {
+    asks,
+    recalls,
+    resolved,
+    forgotten,
+    ask(slots) {
+      asks.push(slots);
+
+      return Promise.resolve(options?.answer ?? { answer: NOTHING_FOUND, citations: [] });
+    },
+    recall(slots) {
+      recalls.push(slots);
+
+      return Promise.resolve(options?.memories ?? []);
+    },
+    resolveForget(slots) {
+      resolved.push(slots);
+
+      return Promise.resolve(options?.parent);
+    },
+    forget(parentId) {
+      forgotten.push(parentId);
+
+      return Promise.resolve(options?.removed ?? true);
+    },
+  };
+}
+
 function log(): ConversationLog & { exchanges: AppendExchange[] } {
   const history: ConversationTurn[] = [];
   const exchanges: AppendExchange[] = [];
@@ -83,17 +145,198 @@ describe('respond', () => {
   it('does not call the classifier when the button already picked the intent', async () => {
     const classify = vi.fn();
     const ingestion = pipeline();
+    const retrieval = spyRetrieval();
 
     const reply = await respond(
-      { source: 'telegram', classifier: { classify }, pipeline: ingestion },
+      { source: 'telegram', classifier: { classify }, pipeline: ingestion, retrieval },
       message('buy milk'),
       [],
       'ask',
     );
 
-    expect(reply).toEqual({ text: NOT_BUILT_YET, keyboard: 'save' });
+    expect(reply).toEqual({ text: NOTHING_FOUND, keyboard: 'save' });
     expect(classify).not.toHaveBeenCalled();
     expect(ingestion.ingested).toEqual([]);
+    expect(retrieval.asks).toEqual([{ query: 'buy milk' }]);
+    expect(retrieval.forgotten).toEqual([]);
+  });
+
+  it('asks with the classifier query and cites the file', async () => {
+    const retrieval = spyRetrieval({
+      answer: {
+        answer: 'Tuesday at 10.',
+        citations: [
+          { id: PARENT, summary: 'Appointment card', url: 'https://signed.example/dentist.jpg' },
+          { id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', summary: 'Weekend cooking' },
+        ],
+      },
+    });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () =>
+            Promise.resolve({
+              intent: 'ask',
+              slots: { query: '  when is the dentist  ', categories: ['health'] },
+            }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('when is it'),
+      [],
+    );
+
+    expect(retrieval.asks).toEqual([{ query: 'when is the dentist', categories: ['health'] }]);
+
+    expect(reply).toEqual({
+      text: 'Tuesday at 10.\n\nAppointment card\nhttps://signed.example/dentist.jpg\n\nWeekend cooking',
+      keyboard: 'save',
+    });
+  });
+
+  it('uses the message text when ask or forget has no query', async () => {
+    const retrieval = spyRetrieval({ parent: dentist });
+
+    await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'forget', slots: { query: '   ' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('forget the dentist'),
+      [],
+    );
+
+    expect(retrieval.resolved).toEqual([{ query: 'forget the dentist' }]);
+    expect(retrieval.forgotten).toEqual([]);
+  });
+
+  it('lists dated parents and does not search', async () => {
+    const retrieval = spyRetrieval({ memories: [dentist] });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () =>
+            Promise.resolve({
+              intent: 'recall-by-filter',
+              slots: { kinds: ['event'], orderBy: 'event_at', direction: 'asc' },
+            }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('what is coming up'),
+      [],
+    );
+
+    expect(reply).toEqual({ text: '2026-02-25 · Appointment card', keyboard: 'save' });
+
+    expect(retrieval.recalls).toEqual([
+      { kinds: ['event'], orderBy: 'event_at', direction: 'asc' },
+    ]);
+
+    expect(retrieval.asks).toEqual([]);
+    expect(retrieval.resolved).toEqual([]);
+  });
+
+  it('dates a created listing from created_at', async () => {
+    const retrieval = spyRetrieval({ memories: [dentist] });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () =>
+            Promise.resolve({ intent: 'recall-by-filter', slots: { orderBy: 'created_at' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('what did I save'),
+      [],
+    );
+
+    expect(reply).toEqual({ text: '2023-11-14 · Appointment card', keyboard: 'save' });
+  });
+
+  it('asks to confirm a forget and does not delete yet', async () => {
+    const retrieval = spyRetrieval({ parent: dentist });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'forget', slots: { query: 'the dentist' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('forget the dentist'),
+      [],
+    );
+
+    expect(reply).toEqual({
+      text: 'Forget Appointment card?',
+      keyboard: 'forget',
+      parentId: PARENT,
+    });
+
+    expect(retrieval.forgotten).toEqual([]);
+  });
+
+  it('offers save when forget finds nothing', async () => {
+    const retrieval = spyRetrieval();
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'forget', slots: { query: 'the dentist' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('forget the dentist'),
+      [],
+    );
+
+    expect(reply).toEqual({ text: NOTHING_FOUND, keyboard: 'save' });
+    expect(retrieval.forgotten).toEqual([]);
+  });
+
+  it('clips a reply at the telegram limit', async () => {
+    const retrieval = spyRetrieval({ answer: { answer: 'a'.repeat(5000), citations: [] } });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'long' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('long'),
+      [],
+    );
+
+    expect(reply.text).toHaveLength(4096);
+    expect(reply.keyboard).toBe('save');
+  });
+});
+
+describe('forgetResult', () => {
+  it('reports the delete without a button', () => {
+    expect(forgetResult(true)).toEqual({ text: 'Forgotten.', keyboard: 'none' });
+    expect(forgetResult(false)).toEqual({ text: NOTHING_FOUND, keyboard: 'none' });
   });
 });
 
@@ -160,6 +403,7 @@ describe('dispatch', () => {
         classifier,
         pipeline: ingestion,
         conversations,
+        retrieval: spyRetrieval(),
         now: () => now,
       },
       message('buy milk', '1'),

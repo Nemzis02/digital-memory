@@ -1,6 +1,6 @@
 import { Bot } from 'grammy';
 import type { ConversationLog } from '../core/conversation/store.ts';
-import type { RouteDeps } from '../core/ingestion/route.ts';
+import type { Retrieval, RouteDeps } from '../core/ingestion/route.ts';
 import { logger } from '../core/logging/logger.ts';
 import type { IngestionPipeline } from '../core/pipeline/graph.ts';
 import type { IntentClassifier } from '../core/retrieval/intent.ts';
@@ -15,6 +15,7 @@ export interface BotDependencies {
   classifier: IntentClassifier;
   pipeline: IngestionPipeline;
   conversations: ConversationLog;
+  retrieval: Retrieval;
   now?: () => Date;
 }
 
@@ -26,6 +27,7 @@ export function createBot(deps: BotDependencies): Bot {
     classifier: deps.classifier,
     pipeline: deps.pipeline,
     conversations: deps.conversations,
+    retrieval: deps.retrieval,
     ...(deps.now === undefined ? {} : { now: deps.now }),
   };
 
