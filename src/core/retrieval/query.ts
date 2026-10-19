@@ -1,13 +1,19 @@
 import type { UUID } from 'node:crypto';
 import type { Embeddings } from '../llm/embeddings.ts';
 import type { ChatModel } from '../llm/router.ts';
+import { logger } from '../logging/logger.ts';
 import type { MemoryPayload } from '../memory/payload.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, MemoryFilter, SearchHit, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND, type Answer, type Citation } from './answer.ts';
 import type { IntentSlots } from './intent.ts';
 
+const log = logger.child({ module: 'retrieval/query' });
+
 const SEARCH_LIMIT = 10;
+
+// Default scroll page is 10, so a long note's leftover chunks would still match ask().
+const MAX_CHILDREN = 512;
 
 const SYSTEM = `You answer one question from a personal archive. Use only the memories in the user message. If they do not contain the answer, reply with exactly "${NOTHING_FOUND}". Do not use outside knowledge.
 
@@ -46,11 +52,11 @@ export interface AskDeps {
   storage: ObjectStorage;
 }
 
-function requireQuery(slots: IntentSlots): string {
+function requireQuery(slots: IntentSlots, fn: 'ask' | 'forget'): string {
   const query = slots.query?.trim();
 
   if (query === undefined || query === '') {
-    throw new TypeError('ask() needs a query');
+    throw new TypeError(`${fn}() needs a query`);
   }
 
   return query;
@@ -111,7 +117,7 @@ async function cite(
 }
 
 export async function ask(deps: AskDeps, slots: IntentSlots): Promise<Answer> {
-  const query = requireQuery(slots);
+  const query = requireQuery(slots, 'ask');
   const dense = await deps.embeddings.embed(query, 'query');
   const sparse = deps.embeddings.embedSparse(query);
 
@@ -141,4 +147,74 @@ export async function ask(deps: AskDeps, slots: IntentSlots): Promise<Answer> {
   });
 
   return { answer, citations: await cite(deps.storage, parents) };
+}
+
+export interface ResolveForgetDeps {
+  store: VectorStore;
+  embeddings: Embeddings;
+}
+
+export async function resolveForget(
+  deps: ResolveForgetDeps,
+  slots: IntentSlots,
+): Promise<MemoryPayload | undefined> {
+  const query = requireQuery(slots, 'forget');
+  const dense = await deps.embeddings.embed(query, 'query');
+  const sparse = deps.embeddings.embedSparse(query);
+
+  const hits = await deps.store.search({
+    dense,
+    sparse,
+    limit: SEARCH_LIMIT,
+    filter: memoryFilter(slots, true),
+  });
+
+  const ranked = [...hits].sort((left, right) => right.score - left.score);
+  const seen = new Set<UUID>();
+
+  for (const hit of ranked) {
+    const id = hit.payload.chunking.parent_id;
+
+    if (id === undefined || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+
+    const [parent] = await deps.store.fetch([id]);
+
+    if (parent !== undefined) {
+      return parent;
+    }
+  }
+
+  return undefined;
+}
+
+export interface ForgetDeps {
+  store: VectorStore;
+  storage: ObjectStorage;
+}
+
+export async function forget(deps: ForgetDeps, parentId: UUID): Promise<boolean> {
+  const [parent] = await deps.store.fetch([parentId]);
+
+  if (parent === undefined || parent.chunking.is_child) {
+    return false;
+  }
+
+  const children = await deps.store.list({ filter: { parentId }, limit: MAX_CHILDREN });
+  const ids: UUID[] = [parentId, ...children.map((child) => child.id)];
+
+  await deps.store.remove(ids);
+
+  const key = parent.r2_file_path;
+
+  if (key !== undefined) {
+    await deps.storage.remove(key);
+  }
+
+  log.info('forgotten', { id: parentId, points: ids.length });
+
+  return true;
 }
