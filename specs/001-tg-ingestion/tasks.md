@@ -209,8 +209,8 @@ The fast model runs at reasoning `low`. `gemini-3.8-flash` rejects `minimal`. A 
 to end on a user turn that contains text: a trailing model turn is a prefill, and an empty
 final turn is rejected. The instruction is its own field, so inbound text stays data.
 
-`claude-sonnet-5-5` answers. `ANTHROPIC_API_KEY` is optional at boot, because ingestion only
-needs `LLM_API_KEY`, and `model('strong')` throws when the answer key is absent. Images are
+`claude-sonnet-5-5` answers. `LLM_STRONG_API_KEY` is optional at boot, because ingestion only
+needs `LLM_FAST_API_KEY`, and `model('strong')` throws when the answer key is absent. Images are
 limited to jpeg, png, gif, and webp, the set both models accept. Provider calls go through the
 Vercel AI SDK and stop at `src/core/llm/`; the lint rule is what keeps a transport from growing
 its own client. A gateway stays a registry swap. See ADR 003.

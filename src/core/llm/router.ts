@@ -153,7 +153,7 @@ function chatModel(spec: ModelSpec): ChatModel {
 }
 
 export function createRouter(env: Env = getEnv()): LlmRouter {
-  const google = createGoogleGenerativeAI({ apiKey: env.LLM_API_KEY });
+  const google = createGoogleGenerativeAI({ apiKey: env.LLM_FAST_API_KEY });
 
   const fast = chatModel({
     id: FAST_MODEL,
@@ -170,10 +170,10 @@ export function createRouter(env: Env = getEnv()): LlmRouter {
         return fast;
       }
 
-      const apiKey = env.ANTHROPIC_API_KEY;
+      const apiKey = env.LLM_STRONG_API_KEY;
 
       if (apiKey === undefined) {
-        throw new Error('ANTHROPIC_API_KEY is required for the strong model');
+        throw new Error('LLM_STRONG_API_KEY is required for the strong model');
       }
 
       strong ??= chatModel({

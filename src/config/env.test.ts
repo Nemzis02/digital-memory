@@ -11,7 +11,7 @@ const valid = {
   R2_ACCESS_KEY_ID: 'access',
   R2_SECRET_ACCESS_KEY: 'secret',
   R2_BUCKET_NAME: 'digital-memory',
-  LLM_API_KEY: 'llm-key',
+  LLM_FAST_API_KEY: 'llm-key',
 } satisfies NodeJS.ProcessEnv;
 
 describe('parseEnv', () => {
@@ -22,18 +22,18 @@ describe('parseEnv', () => {
     expect(env.QDRANT_COLLECTION).toBe('digital_memory');
     expect(env.TELEGRAM_ADMIN_ID).toBe(123456789);
     expect(env.R2_PRESIGN_TTL_SECONDS).toBe(900);
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.LLM_STRONG_API_KEY).toBeUndefined();
   });
 
   it('reads an optional variable left blank as absent', () => {
-    const env = parseEnv({ ...valid, ANTHROPIC_API_KEY: '   ', PUBLIC_URL: '' });
+    const env = parseEnv({ ...valid, LLM_STRONG_API_KEY: '   ', PUBLIC_URL: '' });
 
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.LLM_STRONG_API_KEY).toBeUndefined();
     expect(env.PUBLIC_URL).toBeUndefined();
   });
 
   it('still reports a required variable left blank', () => {
-    expect(() => parseEnv({ ...valid, LLM_API_KEY: '' })).toThrow(/LLM_API_KEY/);
+    expect(() => parseEnv({ ...valid, LLM_FAST_API_KEY: '' })).toThrow(/LLM_FAST_API_KEY/);
   });
 
   it('rejects a pre-signed URL TTL above 15 minutes', () => {
@@ -43,7 +43,7 @@ describe('parseEnv', () => {
   });
 
   it('reports every missing variable in a single error', () => {
-    expect(() => parseEnv({})).toThrow(/TELEGRAM_BOT_TOKEN[\s\S]*LLM_API_KEY/);
+    expect(() => parseEnv({})).toThrow(/TELEGRAM_BOT_TOKEN[\s\S]*LLM_FAST_API_KEY/);
   });
 
   it('rejects a malformed bot token', () => {

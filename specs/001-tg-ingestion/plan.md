@@ -150,4 +150,5 @@ The application requires the following environment variables (to be validated by
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 - `R2_BUCKET_NAME`
-- `LLM_API_KEY` (e.g., Gemini or Anthropic key for LangGraph)
+- `LLM_FAST_API_KEY`
+- `LLM_STRONG_API_KEY` (optional; read when a question is asked)

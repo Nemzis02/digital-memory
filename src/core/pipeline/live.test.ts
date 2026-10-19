@@ -13,7 +13,7 @@ import type { IngestResult } from './graph.ts';
 import { createUrlFetcher } from './url.ts';
 
 const KEYS = [
-  'LLM_API_KEY',
+  'LLM_FAST_API_KEY',
   'QDRANT_API_KEY',
   'R2_ACCOUNT_ID',
   'R2_ACCESS_KEY_ID',

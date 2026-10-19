@@ -55,7 +55,7 @@ const env = parseEnv({
   R2_ACCESS_KEY_ID: 'access',
   R2_SECRET_ACCESS_KEY: 'secret',
   R2_BUCKET_NAME: 'digital-memory',
-  LLM_API_KEY: 'llm-key',
+  LLM_FAST_API_KEY: 'llm-key',
 });
 
 const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]);

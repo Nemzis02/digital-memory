@@ -31,10 +31,11 @@
 
 Copy `.env.example` to `.env` and fill it in. `POSTGRES_PASSWORD` and `QDRANT_API_KEY` are values you
 choose — `docker-compose.yml` configures the containers to demand them. The credentials that come
-from elsewhere are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_ID` (BotFather), `LLM_API_KEY` (Google AI
-Studio), and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME`
-(Cloudflare, on a bucket with public access left disabled). `ANTHROPIC_API_KEY` is only read once a
-question is asked, and `PUBLIC_URL` with `TELEGRAM_WEBHOOK_SECRET` only when serving a webhook —
+from elsewhere are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_ID` (BotFather), `LLM_FAST_API_KEY`
+(fast model and embeddings), and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` /
+`R2_BUCKET_NAME` (Cloudflare, on a bucket with public access left disabled). `LLM_STRONG_API_KEY` is
+only read once a question is asked, and `PUBLIC_URL` with `TELEGRAM_WEBHOOK_SECRET` only when
+serving a webhook —
 leaving both unset selects long polling, which needs no public address. `npm run dev` starts `src/index.ts`, and that process binds `PORT` either way: Telegram, and later MCP and OAuth, share one HTTP server.
 
 ```bash

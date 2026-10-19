@@ -5,8 +5,8 @@ const SECRET_ENV_KEYS = [
   'QDRANT_API_KEY',
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',
-  'LLM_API_KEY',
-  'ANTHROPIC_API_KEY',
+  'LLM_FAST_API_KEY',
+  'LLM_STRONG_API_KEY',
 ] as const;
 
 const SENSITIVE_FIELD = /(token|secret|password|api[-_]?key|authorization|cookie|credential)/i;

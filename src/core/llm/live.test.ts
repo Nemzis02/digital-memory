@@ -3,7 +3,7 @@ import { DENSE_VECTOR_SIZE } from '../vector/vector-store.ts';
 import { createEmbeddings } from './embeddings.ts';
 import { createRouter } from './router.ts';
 
-const live = process.env.LLM_LIVE === '1' && (process.env.LLM_API_KEY?.length ?? 0) > 0;
+const live = process.env.LLM_LIVE === '1' && (process.env.LLM_FAST_API_KEY?.length ?? 0) > 0;
 
 describe.skipIf(!live)('live model smoke', () => {
   it('embeds one short string at the collection width', async () => {

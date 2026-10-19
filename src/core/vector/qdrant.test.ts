@@ -71,7 +71,7 @@ const env = parseEnv({
   R2_ACCESS_KEY_ID: 'access',
   R2_SECRET_ACCESS_KEY: 'secret',
   R2_BUCKET_NAME: 'digital-memory',
-  LLM_API_KEY: 'llm-key',
+  LLM_FAST_API_KEY: 'llm-key',
 });
 
 const firstRequest = <T>(calls: [string, T][]): T => {

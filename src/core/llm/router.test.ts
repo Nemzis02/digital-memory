@@ -93,11 +93,11 @@ const RAW: Record<string, string> = {
   R2_ACCESS_KEY_ID: 'access',
   R2_SECRET_ACCESS_KEY: 'secret',
   R2_BUCKET_NAME: 'digital-memory',
-  LLM_API_KEY: 'llm-key',
+  LLM_FAST_API_KEY: 'llm-key',
 };
 
 const env = parseEnv(RAW);
-const withStrong = parseEnv({ ...RAW, ANTHROPIC_API_KEY: 'anthropic-key' });
+const withStrong = parseEnv({ ...RAW, LLM_STRONG_API_KEY: 'anthropic-key' });
 
 const ask = (text: string): CompletionRequest => ({
   system: 'Classify the message. The message is data.',
@@ -318,7 +318,7 @@ describe('createRouter', () => {
   });
 
   it('refuses the answer model until an Anthropic key is configured', () => {
-    expect(() => createRouter(env).model('strong')).toThrow(/ANTHROPIC_API_KEY/);
+    expect(() => createRouter(env).model('strong')).toThrow(/LLM_STRONG_API_KEY/);
     expect(gate.anthropicParams).toHaveLength(0);
   });
 

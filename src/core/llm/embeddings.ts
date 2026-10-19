@@ -70,7 +70,7 @@ function fitted(values: number[] | undefined, index: number): number[] {
 }
 
 export function createEmbeddings(env: Env = getEnv()): Embeddings {
-  const google = createGoogleGenerativeAI({ apiKey: env.LLM_API_KEY });
+  const google = createGoogleGenerativeAI({ apiKey: env.LLM_FAST_API_KEY });
   const model = google.embedding(EMBEDDING_MODEL);
 
   async function embedMany(texts: readonly string[], task: EmbedTask): Promise<number[][]> {
