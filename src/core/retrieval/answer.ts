@@ -2,10 +2,16 @@ import type { UUID } from 'node:crypto';
 
 export const NOTHING_FOUND = 'nothing found';
 
+export interface CitationFile {
+  key: string;
+  type: 'photo' | 'document';
+}
+
 export interface Citation {
   id: UUID;
   summary: string;
   url?: string;
+  file?: CitationFile;
 }
 
 export interface Answer {

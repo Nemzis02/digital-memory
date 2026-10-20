@@ -114,6 +114,15 @@ describe('createIntentClassifier', () => {
     expect(classified).toEqual({ intent: 'save', slots: {} });
   });
 
+  it('drops slots the model filled on small talk', async () => {
+    const { classified } = await classify(
+      { intent: 'chat', query: 'how are you' },
+      { text: 'how are you', context: [] },
+    );
+
+    expect(classified).toEqual({ intent: 'chat', slots: {} });
+  });
+
   it('omits a blank query and location, and slugifies tags', async () => {
     const { classified } = await classify(
       {

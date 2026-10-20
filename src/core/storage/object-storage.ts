@@ -18,10 +18,16 @@ export interface StoredObject {
   contentType: string;
 }
 
+export interface OpenedObject {
+  body: Readable;
+  size?: number;
+}
+
 export interface ObjectStorage {
   upload(input: UploadInput): Promise<StoredObject>;
   presignDownload(key: string, expiresIn?: number): Promise<string>;
   openStream(key: string): Promise<Readable>;
+  openSized(key: string): Promise<OpenedObject>;
   remove(key: string): Promise<void>;
 }
 

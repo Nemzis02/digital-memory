@@ -1,11 +1,12 @@
 import type { UUID } from 'node:crypto';
+import { toTelegramHTML } from 'md-to-telegram';
 import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemoryPayload, MemorySource } from '../memory/payload.ts';
 import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
-import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
+import { NOTHING_FOUND, type Answer, type CitationFile } from '../retrieval/answer.ts';
 import type { Intent, IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
@@ -17,6 +18,8 @@ const TELEGRAM_TEXT_LIMIT = 4096;
 
 const FORGOTTEN = 'Forgotten.';
 
+const CHAT_REPLY = "Ask me about something you've saved.";
+
 export interface Retrieval {
   ask(slots: IntentSlots): Promise<Answer>;
   recall(slots: IntentSlots): Promise<MemoryPayload[]>;
@@ -24,10 +27,14 @@ export interface Retrieval {
   forget(parentId: UUID): Promise<boolean>;
 }
 
+export interface ReplyFile extends CitationFile {
+  summary: string;
+}
+
 export type RouteReply =
-  | { text: string; keyboard: 'undo' | 'save' }
-  | { text: string; keyboard: 'forget'; parentId: UUID }
-  | { text: string; keyboard: 'none' };
+  | { text: string; html?: string; files?: ReplyFile[]; keyboard: 'undo' | 'save' }
+  | { text: string; html?: string; keyboard: 'forget'; parentId: UUID }
+  | { text: string; html?: string; keyboard: 'none' };
 
 export interface RouteDeps {
   source: MemorySource;
@@ -58,18 +65,42 @@ function day(epoch: number): string {
   return new Date(epoch * 1000).toISOString().slice(0, 10);
 }
 
-function formatAnswer(answer: Answer): string {
+function escapeHtml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function formatAnswer(answer: Answer): { text: string; html: string; files?: ReplyFile[] } {
   const lines = [answer.answer];
+  const htmlLines = [toTelegramHTML(answer.answer).text];
+  const files: ReplyFile[] = [];
 
   for (const citation of answer.citations) {
+    const file = citation.file;
+
+    if (file !== undefined) {
+      files.push({ key: file.key, type: file.type, summary: citation.summary });
+      continue;
+    }
+
     lines.push('', citation.summary);
 
-    if (citation.url !== undefined) {
-      lines.push(citation.url);
+    const url = citation.url;
+
+    if (url === undefined) {
+      htmlLines.push('', escapeHtml(citation.summary));
+      continue;
     }
+
+    const href = escapeHtml(url).replaceAll('"', '&quot;');
+
+    htmlLines.push('', `<a href="${href}">${escapeHtml(citation.summary)}</a>`);
   }
 
-  return lines.join('\n');
+  return {
+    text: lines.join('\n'),
+    html: htmlLines.join('\n'),
+    ...(files.length === 0 ? {} : { files }),
+  };
 }
 
 function formatRecall(slots: IntentSlots, memories: readonly MemoryPayload[]): string {
@@ -129,9 +160,18 @@ export async function respond(
 
     case 'ask': {
       const answer = await deps.retrieval.ask(slots);
+      const formatted = formatAnswer(answer);
 
-      return present({ text: formatAnswer(answer), keyboard: 'save' });
+      return present({
+        text: formatted.text,
+        html: formatted.html,
+        keyboard: 'save',
+        ...(formatted.files === undefined ? {} : { files: formatted.files }),
+      });
     }
+
+    case 'chat':
+      return present({ text: CHAT_REPLY, keyboard: 'save' });
 
     case 'recall-by-filter': {
       const memories = await deps.retrieval.recall(slots);

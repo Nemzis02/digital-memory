@@ -154,7 +154,7 @@ describe('respond', () => {
       'ask',
     );
 
-    expect(reply).toEqual({ text: NOTHING_FOUND, keyboard: 'save' });
+    expect(reply).toEqual({ text: NOTHING_FOUND, html: NOTHING_FOUND, keyboard: 'save' });
     expect(classify).not.toHaveBeenCalled();
     expect(ingestion.ingested).toEqual([]);
     expect(retrieval.asks).toEqual([{ query: 'buy milk' }]);
@@ -166,8 +166,16 @@ describe('respond', () => {
       answer: {
         answer: 'Tuesday at 10.',
         citations: [
-          { id: PARENT, summary: 'Appointment card', url: 'https://signed.example/dentist.jpg' },
-          { id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', summary: 'Weekend cooking' },
+          {
+            id: PARENT,
+            summary: 'Appointment card',
+            file: { key: 'photos/2026/03/dentist.jpg', type: 'photo' },
+          },
+          {
+            id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+            summary: 'Paella page',
+            url: 'https://example.com/paella',
+          },
         ],
       },
     });
@@ -192,9 +200,143 @@ describe('respond', () => {
     expect(retrieval.asks).toEqual([{ query: 'when is the dentist', categories: ['health'] }]);
 
     expect(reply).toEqual({
-      text: 'Tuesday at 10.\n\nAppointment card\nhttps://signed.example/dentist.jpg\n\nWeekend cooking',
+      text: 'Tuesday at 10.\n\nPaella page',
+      html: 'Tuesday at 10.\n\n<a href="https://example.com/paella">Paella page</a>',
+      files: [{ key: 'photos/2026/03/dentist.jpg', type: 'photo', summary: 'Appointment card' }],
       keyboard: 'save',
     });
+
+    expect(reply.text).not.toContain('photos/');
+  });
+
+  it('renders markdown as telegram html and keeps the log as markdown', async () => {
+    const retrieval = spyRetrieval({
+      answer: {
+        answer: '**Tuesday** at 10.\n\n- card',
+        citations: [],
+      },
+    });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'when' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('when'),
+      [],
+    );
+
+    expect(reply.text).toBe('**Tuesday** at 10.\n\n- card');
+    expect(reply.html).toBe('<b>Tuesday</b> at 10.\n\n• card');
+  });
+
+  it('escapes the answer and the summary inside the link', async () => {
+    const retrieval = spyRetrieval({
+      answer: {
+        answer: 'a < b & c',
+        citations: [
+          {
+            id: PARENT,
+            summary: 'card</a><a href="https://evil.example">',
+            url: 'https://signed.example/a.jpg?q="1"',
+          },
+        ],
+      },
+    });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'card' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('card'),
+      [],
+    );
+
+    expect(reply.text).toBe('a < b & c\n\ncard</a><a href="https://evil.example">');
+    expect(reply.text).not.toContain('signed.example');
+
+    expect(reply).toMatchObject({
+      keyboard: 'save',
+      html: [
+        'a &lt; b &amp; c',
+        '',
+        '<a href="https://signed.example/a.jpg?q=&quot;1&quot;">card&lt;/a&gt;&lt;a href="https://evil.example"&gt;</a>',
+      ].join('\n'),
+    });
+  });
+
+  it('sends plain text when the linked form exceeds the telegram limit', async () => {
+    const retrieval = spyRetrieval({
+      answer: {
+        answer: 'Tuesday.',
+        citations: [
+          {
+            id: PARENT,
+            summary: 'Appointment card',
+            url: `https://signed.example/${'a'.repeat(5000)}`,
+          },
+          {
+            id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+            summary: 'Scan',
+            file: { key: 'documents/2026/03/scan.pdf', type: 'document' },
+          },
+        ],
+      },
+    });
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'when' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('when'),
+      [],
+    );
+
+    expect(reply.text).toBe('Tuesday.\n\nAppointment card');
+    expect(reply.html).toContain('<a href="https://signed.example/');
+    expect(reply.html?.length).toBeGreaterThan(4096);
+
+    expect(reply).toMatchObject({
+      files: [{ key: 'documents/2026/03/scan.pdf', type: 'document', summary: 'Scan' }],
+      keyboard: 'save',
+    });
+  });
+
+  it('answers small talk without searching', async () => {
+    const retrieval = spyRetrieval();
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'chat', slots: { query: 'how are you' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+      },
+      message('how are you'),
+      [],
+    );
+
+    expect(reply).toEqual({ text: "Ask me about something you've saved.", keyboard: 'save' });
+    expect(retrieval.asks).toEqual([]);
+    expect(retrieval.recalls).toEqual([]);
+    expect(retrieval.resolved).toEqual([]);
+    expect(retrieval.forgotten).toEqual([]);
   });
 
   it('uses the message text when ask or forget has no query', async () => {
@@ -329,6 +471,7 @@ describe('respond', () => {
     );
 
     expect(reply.text).toHaveLength(4096);
+    expect(reply.html).toHaveLength(5000);
     expect(reply.keyboard).toBe('save');
   });
 });

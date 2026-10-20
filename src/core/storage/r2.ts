@@ -11,7 +11,7 @@ import type { Env } from '../../config/env.ts';
 import { getEnv, r2Endpoint } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
 import { isObjectKey, objectKey, resolveContent } from './content.ts';
-import type { ObjectStorage } from './object-storage.ts';
+import type { ObjectStorage, OpenedObject } from './object-storage.ts';
 import { ObjectNotFoundError } from './object-storage.ts';
 
 const log = logger.child({ module: 'storage/r2' });
@@ -32,6 +32,29 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
     },
     requestHandler: { connectionTimeout: 3_000, requestTimeout: 30_000 },
   });
+
+  async function open(key: string): Promise<OpenedObject> {
+    try {
+      const { Body, ContentLength } = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: key }),
+      );
+
+      if (Body === undefined) {
+        throw new ObjectNotFoundError(key);
+      }
+
+      return {
+        body: Body as Readable,
+        ...(ContentLength === undefined ? {} : { size: ContentLength }),
+      };
+    } catch (error) {
+      if (error instanceof NoSuchKey) {
+        throw new ObjectNotFoundError(key, { cause: error });
+      }
+
+      throw error;
+    }
+  }
 
   return {
     async upload(input) {
@@ -80,22 +103,12 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
       });
     },
 
-    async openStream(key) {
-      try {
-        const { Body } = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    openStream(key) {
+      return open(key).then((opened) => opened.body);
+    },
 
-        if (Body === undefined) {
-          throw new ObjectNotFoundError(key);
-        }
-
-        return Body as Readable;
-      } catch (error) {
-        if (error instanceof NoSuchKey) {
-          throw new ObjectNotFoundError(key, { cause: error });
-        }
-
-        throw error;
-      }
+    openSized(key) {
+      return open(key);
     },
 
     async remove(key) {

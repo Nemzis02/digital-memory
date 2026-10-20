@@ -1,7 +1,7 @@
 import type { ConversationTurn } from '../conversation/context.ts';
 import type { MemoryCategory, MemoryKind, MemoryType } from '../memory/payload.ts';
 
-export const INTENTS = ['save', 'ask', 'recall-by-filter', 'forget'] as const;
+export const INTENTS = ['save', 'ask', 'recall-by-filter', 'forget', 'chat'] as const;
 
 export type Intent = (typeof INTENTS)[number];
 

@@ -20,8 +20,9 @@ save means the user is giving you something to keep: a note, a link, a photo, a 
 ask is a question answered from the text of stored memories.
 recall-by-filter is a listing over metadata — what is coming up, receipts from a month — and not a question about what a memory says.
 forget means the user wants a memory deleted.
+chat is a greeting, thanks, or a reaction. It is not a question about stored text, not something to keep, and not a list or a deletion.
 
-query is one standalone phrase for ask or forget, rewritten so it does not depend on earlier turns. Omit it for save and for recall-by-filter.
+query is one standalone phrase for ask or forget, rewritten so it does not depend on earlier turns. Omit it for save, chat, and recall-by-filter.
 categories, kinds, tags, types, and location are filled only when the message names them.
 tags are lowercase, prefixed with #, no spaces, at most ${String(MAX_TAGS)}, and must not repeat a category.
 eventAfter and eventBefore bound the date a memory is about. createdAfter and createdBefore bound the day it was saved. Use YYYY-MM-DD. Coming up starts today and has no end. Omit a bound the message does not set.
@@ -128,8 +129,8 @@ function toSlots(result: RawClassification): IntentSlots {
 }
 
 function toClassified(result: RawClassification): ClassifiedIntent {
-  if (result.intent === 'save') {
-    return { intent: 'save', slots: {} };
+  if (result.intent === 'save' || result.intent === 'chat') {
+    return { intent: result.intent, slots: {} };
   }
 
   return { intent: result.intent, slots: toSlots(result) };

@@ -64,6 +64,9 @@ function fakeStorage(): ObjectStorage & { uploads: UploadInput[]; removed: strin
 
       return Promise.resolve(Readable.from([Buffer.from(body)]));
     },
+    openSized(key) {
+      return this.openStream(key).then((body) => ({ body, size: 0 }));
+    },
     remove(key) {
       removed.push(key);
 

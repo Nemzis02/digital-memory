@@ -1,12 +1,14 @@
 import type { UUID } from 'node:crypto';
-import { InlineKeyboard, type Context } from 'grammy';
+import { InlineKeyboard, InputFile, type Context } from 'grammy';
+import { splitMessage } from 'md-to-telegram';
 import type { CallbackQuery, Message, MaybeInaccessibleMessage, User } from 'grammy/types';
 import { z } from 'zod';
 import { logger } from '../../core/logging/logger.ts';
 import { dispatch, forgetResult } from '../../core/ingestion/route.ts';
-import type { RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
+import type { ReplyFile, RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
 import type { InboundFile, InboundMessage } from '../../core/ingestion/inbound.ts';
 import { turnBody } from '../../core/ingestion/inbound.ts';
+import type { ObjectStorage, OpenedObject } from '../../core/storage/object-storage.ts';
 
 const log = logger.child({ module: 'bot/handlers' });
 
@@ -19,6 +21,30 @@ const CALLBACK = { undo: 'undo', save: 'save' } as const;
 const FORGET_PREFIX = 'forget:';
 
 const FORGET_FAILED = 'Could not forget that.';
+
+const PHOTO_BYTES = 10 * 1024 * 1024;
+
+const DOCUMENT_BYTES = 50 * 1024 * 1024;
+
+const NOTICE_LIMIT = 4096;
+
+function unsentLine(summary: string, size?: number): string {
+  const detail =
+    size === undefined ? 'not attached' : `${Math.ceil(size / (1024 * 1024))} MB, not attached`;
+
+  return `${summary} · ${detail}`.slice(0, NOTICE_LIMIT);
+}
+
+async function notifyUnsent(
+  ctx: Context,
+  messageId: number,
+  summary: string,
+  size?: number,
+): Promise<void> {
+  await ctx.reply(unsentLine(summary, size), {
+    reply_parameters: { message_id: messageId },
+  });
+}
 
 function displayName(from: User): string {
   return [from.first_name, from.last_name]
@@ -104,14 +130,110 @@ export function replyMarkup(reply: RouteReply): InlineKeyboard | undefined {
   }
 }
 
-async function sendReply(ctx: Context, messageId: number, reply: RouteReply): Promise<string> {
-  const markup = replyMarkup(reply);
+async function sendFile(
+  ctx: Context,
+  messageId: number,
+  storage: ObjectStorage,
+  file: ReplyFile,
+): Promise<void> {
+  let opened: OpenedObject;
 
-  // The undo button reads callback_query.message.reply_to_message, so this has to be a real reply.
-  const sent = await ctx.reply(reply.text, {
+  try {
+    opened = await storage.openSized(file.key);
+  } catch (error: unknown) {
+    await notifyUnsent(ctx, messageId, file.summary);
+    throw error;
+  }
+
+  const size = opened.size;
+
+  if (size === undefined || size > DOCUMENT_BYTES) {
+    opened.body.destroy();
+
+    await (size === undefined
+      ? notifyUnsent(ctx, messageId, file.summary)
+      : notifyUnsent(ctx, messageId, file.summary, size));
+
+    return;
+  }
+
+  const name = file.key.slice(file.key.lastIndexOf('/') + 1);
+  const input = new InputFile(opened.body, name === '' ? undefined : name);
+
+  const options = {
+    caption: file.summary.slice(0, 1024),
     reply_parameters: { message_id: messageId },
-    ...(markup === undefined ? {} : { reply_markup: markup }),
-  });
+  };
+
+  try {
+    if (file.type === 'photo' && size <= PHOTO_BYTES) {
+      await ctx.replyWithPhoto(input, options);
+      return;
+    }
+
+    await ctx.replyWithDocument(input, options);
+  } catch (error) {
+    opened.body.destroy();
+    await notifyUnsent(ctx, messageId, file.summary);
+    throw error;
+  }
+}
+
+async function sendText(
+  ctx: Context,
+  messageId: number,
+  reply: RouteReply,
+): Promise<{ message_id: number }> {
+  const markup = replyMarkup(reply);
+  const replyTo = { reply_parameters: { message_id: messageId } };
+  const keyboard = markup === undefined ? {} : { reply_markup: markup };
+
+  if (reply.html === undefined) {
+    return ctx.reply(reply.text, { ...replyTo, ...keyboard });
+  }
+
+  const parts = splitMessage(reply.html, { format: 'html' });
+  let first: { message_id: number } | undefined;
+
+  try {
+    for (const [index, part] of parts.entries()) {
+      const sent = await ctx.reply(part, {
+        ...replyTo,
+        parse_mode: 'HTML',
+        ...(index === 0 ? keyboard : {}),
+      });
+
+      first ??= sent;
+    }
+  } catch (error) {
+    log.error('failed to send formatted reply', { error });
+
+    if (first === undefined) {
+      return ctx.reply(reply.text, { ...replyTo, ...keyboard });
+    }
+  }
+
+  return first ?? ctx.reply(reply.text, { ...replyTo, ...keyboard });
+}
+
+async function sendReply(
+  ctx: Context,
+  messageId: number,
+  reply: RouteReply,
+  storage: ObjectStorage,
+): Promise<string> {
+  // The undo button reads callback_query.message.reply_to_message, so this has to be a real reply.
+  const sent = await sendText(ctx, messageId, reply);
+
+  const files = reply.keyboard === 'undo' || reply.keyboard === 'save' ? reply.files : undefined;
+
+  if (files !== undefined) {
+    for (const file of files) {
+      await sendFile(ctx, messageId, storage, file).catch((error: unknown) => {
+        log.error('failed to send citation', { error });
+      });
+    }
+  }
 
   return String(sent.message_id);
 }
@@ -130,7 +252,11 @@ async function recordFailure(
   });
 }
 
-export async function handleMessage(ctx: Context, deps: RouteDeps): Promise<void> {
+export async function handleMessage(
+  ctx: Context,
+  deps: RouteDeps,
+  storage: ObjectStorage,
+): Promise<void> {
   const message = ctx.message;
   const from = ctx.from;
 
@@ -155,7 +281,7 @@ export async function handleMessage(ctx: Context, deps: RouteDeps): Promise<void
   }
 
   try {
-    await dispatch(deps, inbound, (reply) => sendReply(ctx, message.message_id, reply));
+    await dispatch(deps, inbound, (reply) => sendReply(ctx, message.message_id, reply, storage));
   } catch (error) {
     log.error('failed to store message', { error });
 
@@ -251,7 +377,11 @@ async function confirmForget(
     });
 }
 
-export async function handleCallback(ctx: Context, deps: RouteDeps): Promise<void> {
+export async function handleCallback(
+  ctx: Context,
+  deps: RouteDeps,
+  storage: ObjectStorage,
+): Promise<void> {
   const callback = ctx.callbackQuery;
 
   if (callback === undefined) {
@@ -310,10 +440,15 @@ export async function handleCallback(ctx: Context, deps: RouteDeps): Promise<voi
   }
 
   try {
-    await dispatch(deps, original, (reply) => sendReply(ctx, accessible.message_id, reply), {
-      intent: action === CALLBACK.undo ? 'ask' : 'save',
-      userTurn: { body: action, sourceRef: callback.id },
-    });
+    await dispatch(
+      deps,
+      original,
+      (reply) => sendReply(ctx, accessible.message_id, reply, storage),
+      {
+        intent: action === CALLBACK.undo ? 'ask' : 'save',
+        userTurn: { body: action, sourceRef: callback.id },
+      },
+    );
   } catch (error) {
     log.error('failed to reroute message', { error });
 

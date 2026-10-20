@@ -149,10 +149,23 @@ describe('createR2Storage', () => {
     expect(url).not.toMatch(/r2\.dev/);
   });
 
-  it('streams an object body', async () => {
-    sendMock.mockResolvedValueOnce({ Body: 'stream' });
+  it('streams an object body and its size', async () => {
+    sendMock.mockResolvedValueOnce({ Body: 'stream', ContentLength: 12 });
 
     await expect(createR2Storage(env).openStream('photos/a.jpg')).resolves.toBe('stream');
+
+    sendMock.mockResolvedValueOnce({ Body: 'stream', ContentLength: 12 });
+
+    await expect(createR2Storage(env).openSized('photos/a.jpg')).resolves.toEqual({
+      body: 'stream',
+      size: 12,
+    });
+
+    sendMock.mockResolvedValueOnce({ Body: 'stream' });
+
+    await expect(createR2Storage(env).openSized('photos/a.jpg')).resolves.toEqual({
+      body: 'stream',
+    });
   });
 
   it('translates a missing object into a vendor-neutral error', async () => {

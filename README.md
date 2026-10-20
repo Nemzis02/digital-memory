@@ -18,7 +18,7 @@
 ## 🛠️ Tech Stack
 
 - **Runtime & Language:** Node.js (ESM), TypeScript
-- **Telegram Framework:** `grammY`
+- **Telegram Framework:** `grammY`, with `md-to-telegram` turning an answer's Markdown into Telegram HTML
 - **Orchestration & RAG:** `@langchain/langgraph` with `@langchain/langgraph-checkpoint-postgres`, Qdrant Cloud
 - **Models:** Vercel AI SDK (`ai`) over `@ai-sdk/google` (`gemini-3.8-flash`, `gemini-embedding-2`) and `@ai-sdk/anthropic` (`claude-sonnet-5-5`)
 - **Object Storage:** Cloudflare R2 (`@aws-sdk/client-s3`)

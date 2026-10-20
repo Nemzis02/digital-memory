@@ -1,4 +1,5 @@
 import type { UUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 import type { Update, UserFromGetMe } from 'grammy/types';
 import { describe, expect, it } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
@@ -8,8 +9,9 @@ import { memoryId } from '../core/memory/id.ts';
 import type { IngestionPipeline } from '../core/pipeline/graph.ts';
 import type { IngestionInput } from '../core/pipeline/state.ts';
 import type { UndoTarget } from '../core/pipeline/undo.ts';
-import { NOTHING_FOUND } from '../core/retrieval/answer.ts';
-import { stubIntentClassifier } from '../core/retrieval/intent.ts';
+import { NOTHING_FOUND, type Answer } from '../core/retrieval/answer.ts';
+import { stubIntentClassifier, type IntentClassifier } from '../core/retrieval/intent.ts';
+import type { ObjectStorage } from '../core/storage/object-storage.ts';
 import { createBot } from './bot.ts';
 
 const TOKEN = '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // gitleaks:allow
@@ -36,7 +38,13 @@ const KEY = 'documents/2026/10/11111111-1111-4111-8111-111111111111.txt';
 
 interface Sent {
   method: string;
-  payload: { text?: string; reply_parameters?: { message_id?: number }; reply_markup?: unknown };
+  payload: {
+    text?: string;
+    caption?: string;
+    parse_mode?: string;
+    reply_parameters?: { message_id?: number };
+    reply_markup?: unknown;
+  };
 }
 
 function memoryLog(): ConversationLog & { exchanges: AppendExchange[] } {
@@ -132,7 +140,30 @@ function recordingRetrieval(removed = true): Retrieval & { forgotten: UUID[] } {
   };
 }
 
-function harness(retrieval: Retrieval & { forgotten: UUID[] } = recordingRetrieval()) {
+function rejectingStorage(): ObjectStorage {
+  return {
+    upload() {
+      return Promise.reject(new Error('unused'));
+    },
+    presignDownload() {
+      return Promise.reject(new Error('unused'));
+    },
+    openStream() {
+      return Promise.reject(new Error('unused'));
+    },
+    openSized() {
+      return Promise.reject(new Error('unused'));
+    },
+    remove() {
+      return Promise.reject(new Error('unused'));
+    },
+  };
+}
+
+function harness(
+  retrieval: Retrieval & { forgotten: UUID[] } = recordingRetrieval(),
+  extras?: { classifier?: IntentClassifier; storage?: ObjectStorage; failHtml?: boolean },
+) {
   const sent: Sent[] = [];
   let messageId = 50;
 
@@ -142,10 +173,11 @@ function harness(retrieval: Retrieval & { forgotten: UUID[] } = recordingRetriev
   const bot = createBot({
     token: TOKEN,
     adminId: ADMIN,
-    classifier: stubIntentClassifier(),
+    classifier: extras?.classifier ?? stubIntentClassifier(),
     pipeline: pipeline.pipeline,
     conversations,
     retrieval,
+    storage: extras?.storage ?? rejectingStorage(),
   });
 
   bot.botInfo = ME;
@@ -153,7 +185,11 @@ function harness(retrieval: Retrieval & { forgotten: UUID[] } = recordingRetriev
   bot.api.config.use((_prev, method, payload) => {
     sent.push({ method: String(method), payload: payload as Sent['payload'] });
 
-    if (method === 'sendMessage') {
+    if (extras?.failHtml === true && 'parse_mode' in payload && payload.parse_mode === 'HTML') {
+      return Promise.reject(new Error('cannot parse'));
+    }
+
+    if (method === 'sendMessage' || method === 'sendPhoto' || method === 'sendDocument') {
       messageId += 1;
       const text = 'text' in payload ? String(payload.text) : '';
 
@@ -247,6 +283,205 @@ describe('createBot', () => {
         expect(inbound?.file?.fileId).toBe(item.fileId);
       }
     }
+  });
+
+  it('uploads a citation into the chat and skips a file that will not fit', async () => {
+    const photo = 'photos/2026/03/dentist.jpg';
+    const big = 'photos/2026/03/big.jpg';
+    const pdf = 'documents/2026/03/card.pdf';
+    const huge = 'documents/2026/03/huge.pdf';
+    const mystery = 'documents/2026/03/mystery.pdf';
+    const missing = 'documents/2026/03/gone.pdf';
+    const destroyed: string[] = [];
+
+    const sizes = new Map<string, number>([
+      [photo, 12],
+      [big, 11 * 1024 * 1024],
+      [pdf, 20],
+      [huge, 50 * 1024 * 1024 + 1],
+    ]);
+
+    const retrieval = {
+      ...recordingRetrieval(),
+      ask() {
+        return Promise.resolve<Answer>({
+          answer: 'Tuesday at 10.',
+          citations: [
+            {
+              id: PARENT,
+              summary: 'Appointment card',
+              file: { key: photo, type: 'photo' },
+            },
+            { id: PARENT, summary: 'Big card', file: { key: big, type: 'photo' } },
+            {
+              id: PARENT,
+              summary: 'Insurance card',
+              file: { key: pdf, type: 'document' },
+            },
+            {
+              id: PARENT,
+              summary: 'Archive',
+              file: { key: huge, type: 'document' },
+            },
+            {
+              id: PARENT,
+              summary: 'Unknown size',
+              file: { key: mystery, type: 'document' },
+            },
+            {
+              id: PARENT,
+              summary: 'Gone',
+              file: { key: missing, type: 'document' },
+            },
+          ],
+        });
+      },
+    };
+
+    const storage: ObjectStorage = {
+      ...rejectingStorage(),
+      openSized(key) {
+        if (key === missing) {
+          return Promise.reject(new Error('missing'));
+        }
+
+        const body = Readable.from([key]);
+        const destroy = body.destroy.bind(body);
+
+        body.destroy = () => {
+          destroyed.push(key);
+
+          return destroy();
+        };
+
+        const size = sizes.get(key);
+
+        return Promise.resolve(size === undefined ? { body } : { body, size });
+      },
+    };
+
+    const { bot, sent, conversations } = harness(retrieval, {
+      classifier: {
+        classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'dentist' } }),
+      },
+      storage,
+    });
+
+    await bot.handleUpdate(
+      update({
+        message: {
+          message_id: 10,
+          date: 1_700_000_000,
+          chat: { id: 7, type: 'private' },
+          from: person(ADMIN),
+          text: 'when is the dentist',
+        },
+      }),
+    );
+
+    expect(sent.map((item) => item.method)).toEqual([
+      'sendMessage',
+      'sendPhoto',
+      'sendDocument',
+      'sendDocument',
+      'sendMessage',
+      'sendMessage',
+      'sendMessage',
+    ]);
+
+    expect(sent[0]?.payload.text).toBe('Tuesday at 10.');
+
+    expect(sent[0]?.payload.text).not.toContain('photos/');
+    expect(sent[0]?.payload.text).not.toContain('documents/');
+    expect(sent[1]?.payload.caption).toBe('Appointment card');
+    expect(sent[2]?.payload.caption).toBe('Big card');
+    expect(sent[3]?.payload.caption).toBe('Insurance card');
+    expect(sent[1]?.payload.reply_parameters).toEqual({ message_id: 10 });
+    expect(sent[4]?.payload.text).toBe('Archive · 51 MB, not attached');
+    expect(sent[5]?.payload.text).toBe('Unknown size · not attached');
+    expect(sent[6]?.payload.text).toBe('Gone · not attached');
+    expect(sent[4]?.payload.reply_parameters).toEqual({ message_id: 10 });
+    expect(sent[4]?.payload.reply_markup).toBeUndefined();
+    expect(sent[4]?.payload.text).not.toContain('huge');
+    expect(destroyed).toEqual([huge, mystery]);
+    expect(conversations.exchanges[0]?.assistant.body).toBe(sent[0]?.payload.text);
+    expect(conversations.exchanges[0]?.assistant.sourceRef).toBe('51');
+  });
+
+  it('splits a long formatted reply and keeps the log as the clipped markdown', async () => {
+    const retrieval = {
+      ...recordingRetrieval(),
+      ask() {
+        return Promise.resolve<Answer>({ answer: 'a'.repeat(5000), citations: [] });
+      },
+    };
+
+    const { bot, sent, conversations } = harness(retrieval, {
+      classifier: {
+        classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'long' } }),
+      },
+    });
+
+    await bot.handleUpdate(
+      update({
+        message: {
+          message_id: 10,
+          date: 1_700_000_000,
+          chat: { id: 7, type: 'private' },
+          from: person(ADMIN),
+          text: 'long',
+        },
+      }),
+    );
+
+    expect(sent.map((item) => item.method)).toEqual(['sendMessage', 'sendMessage']);
+    expect(sent[0]?.payload.text).toHaveLength(4096);
+    expect(sent[1]?.payload.text).toHaveLength(904);
+    expect(sent[0]?.payload.parse_mode).toBe('HTML');
+    expect(sent[1]?.payload.parse_mode).toBe('HTML');
+    expect(sent[0]?.payload.reply_markup).toBeDefined();
+    expect(sent[1]?.payload.reply_markup).toBeUndefined();
+    expect(sent[0]?.payload.reply_parameters).toEqual({ message_id: 10 });
+    expect(sent[1]?.payload.reply_parameters).toEqual({ message_id: 10 });
+    expect(conversations.exchanges[0]?.assistant.body).toHaveLength(4096);
+    expect(conversations.exchanges[0]?.assistant.body).toBe('a'.repeat(4096));
+    expect(conversations.exchanges[0]?.assistant.sourceRef).toBe('51');
+  });
+
+  it('sends the plain answer when telegram rejects the formatted one', async () => {
+    const retrieval = {
+      ...recordingRetrieval(),
+      ask() {
+        return Promise.resolve<Answer>({ answer: '**Tuesday**', citations: [] });
+      },
+    };
+
+    const { bot, sent, conversations } = harness(retrieval, {
+      classifier: {
+        classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'when' } }),
+      },
+      failHtml: true,
+    });
+
+    await bot.handleUpdate(
+      update({
+        message: {
+          message_id: 10,
+          date: 1_700_000_000,
+          chat: { id: 7, type: 'private' },
+          from: person(ADMIN),
+          text: 'when',
+        },
+      }),
+    );
+
+    expect(sent.map((item) => item.method)).toEqual(['sendMessage', 'sendMessage']);
+    expect(sent[0]?.payload.parse_mode).toBe('HTML');
+    expect(sent[0]?.payload.text).toBe('<b>Tuesday</b>');
+    expect(sent[1]?.payload.parse_mode).toBeUndefined();
+    expect(sent[1]?.payload.text).toBe('**Tuesday**');
+    expect(conversations.exchanges[0]?.assistant.body).toBe('**Tuesday**');
+    expect(conversations.exchanges[0]?.assistant.sourceRef).toBe('51');
   });
 
   it('ignores anyone who is not the admin', async () => {

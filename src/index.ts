@@ -36,8 +36,7 @@ async function main(): Promise<void> {
   const storage = r2Storage();
 
   const retrieval: Retrieval = {
-    ask: (slots) =>
-      ask({ store, embeddings: embedded, model: router.model('strong'), storage }, slots),
+    ask: (slots) => ask({ store, embeddings: embedded, model: router.model('strong') }, slots),
     recall: (slots) => recall(store, slots),
     resolveForget: (slots) => resolveForget({ store, embeddings: embedded }, slots),
     forget: (parentId) => forget({ store, storage }, parentId),
@@ -50,6 +49,7 @@ async function main(): Promise<void> {
     pipeline,
     conversations: createConversationLog(),
     retrieval,
+    storage,
   });
 
   const running = await serve(bot, {
