@@ -4,6 +4,12 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-20 — grammY `InputFile` treats any object with a `url` key as a URL
+
+An S3 `GetObject` body is an `IncomingMessage`, whose `url` is `''`, so grammY fetches it and
+fails with "Only absolute URLs are supported" before any request is sent. Wrap the body with
+`Readable.toWeb` first. Transformer-level bot tests never serialise `InputFile` and miss this.
+
 ## 2026-10-12 — R2 via the AWS SDK
 
 Use `forcePathStyle`: virtual-hosted `<bucket>.<account>.r2…` is outside the account certificate.
@@ -11,17 +17,10 @@ Set both checksum modes to `WHEN_REQUIRED`; the SDK default sends headers R2 rej
 account can also return TLS alert 40 with no certificate on the account host itself — the
 endpoint cert is not provisioned yet, and no client option fixes that.
 
-## 2026-10-12 — Ingestion pipeline
-
-### A LangGraph node may not share a name with a state channel
+## 2026-10-12 — A LangGraph node may not share a name with a state channel
 
 `addNode('enrichment', …)` against a state that has an `enrichment` channel throws at build
 time, not at run time. Channels are nouns, so node names are verbs: `enrich`, `index`.
-
-### AI SDK v7 deprecates `generateObject`
-
-Structured output is `generateText` with `output: Output.object({ schema })`, read back from
-`result.output`. `generateObject` still works but logs a deprecation warning on every call.
 
 ## 2026-10-12 — gemini-embedding-2
 

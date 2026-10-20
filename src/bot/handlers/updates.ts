@@ -1,7 +1,16 @@
 import type { UUID } from 'node:crypto';
-import { InlineKeyboard, InputFile, type Context } from 'grammy';
+import { Readable } from 'node:stream';
+import type { ReadableStream } from 'node:stream/web';
+import { InlineKeyboard, InputFile, InputMediaBuilder, type Context } from 'grammy';
 import { splitMessage } from 'md-to-telegram';
-import type { CallbackQuery, Message, MaybeInaccessibleMessage, User } from 'grammy/types';
+import type {
+  CallbackQuery,
+  InputMediaDocument,
+  InputMediaPhoto,
+  Message,
+  MaybeInaccessibleMessage,
+  User,
+} from 'grammy/types';
 import { z } from 'zod';
 import { logger } from '../../core/logging/logger.ts';
 import { dispatch, forgetResult } from '../../core/ingestion/route.ts';
@@ -27,6 +36,10 @@ const PHOTO_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_BYTES = 50 * 1024 * 1024;
 
 const NOTICE_LIMIT = 4096;
+
+const CAPTION_LIMIT = 1024;
+
+const ALBUM_LIMIT = 10;
 
 function unsentLine(summary: string, size?: number): string {
   const detail =
@@ -130,19 +143,42 @@ export function replyMarkup(reply: RouteReply): InlineKeyboard | undefined {
   }
 }
 
-async function sendFile(
+type Media = 'photo' | 'document';
+
+interface Attachment {
+  file: ReplyFile;
+  opened: OpenedObject;
+  media: Media;
+}
+
+// S3 bodies are IncomingMessages, and grammY fetches anything with a `url` key as a URL.
+export function storedInputFile(body: Readable, key: string): InputFile {
+  const name = key.slice(key.lastIndexOf('/') + 1);
+
+  return new InputFile(
+    Readable.toWeb(body) as ReadableStream<Uint8Array>,
+    name === '' ? undefined : name,
+  );
+}
+
+function inputFile(attachment: Attachment): InputFile {
+  return storedInputFile(attachment.opened.body, attachment.file.key);
+}
+
+async function openAttachment(
   ctx: Context,
   messageId: number,
   storage: ObjectStorage,
   file: ReplyFile,
-): Promise<void> {
+): Promise<Attachment | undefined> {
   let opened: OpenedObject;
 
   try {
     opened = await storage.openSized(file.key);
   } catch (error: unknown) {
+    log.error('failed to open citation', { error });
     await notifyUnsent(ctx, messageId, file.summary);
-    throw error;
+    return undefined;
   }
 
   const size = opened.size;
@@ -154,28 +190,151 @@ async function sendFile(
       ? notifyUnsent(ctx, messageId, file.summary)
       : notifyUnsent(ctx, messageId, file.summary, size));
 
-    return;
+    return undefined;
   }
 
-  const name = file.key.slice(file.key.lastIndexOf('/') + 1);
-  const input = new InputFile(opened.body, name === '' ? undefined : name);
+  const media = file.type === 'photo' && size <= PHOTO_BYTES ? 'photo' : 'document';
 
-  const options = {
-    caption: file.summary.slice(0, 1024),
-    reply_parameters: { message_id: messageId },
-  };
+  return { file, opened, media };
+}
 
-  try {
-    if (file.type === 'photo' && size <= PHOTO_BYTES) {
-      await ctx.replyWithPhoto(input, options);
-      return;
+function sendSingle(
+  ctx: Context,
+  attachment: Attachment,
+  options: {
+    caption: string;
+    reply_parameters: { message_id: number };
+    parse_mode?: 'HTML';
+    reply_markup?: InlineKeyboard;
+  },
+): Promise<{ message_id: number }> {
+  const input = inputFile(attachment);
+
+  return attachment.media === 'photo'
+    ? ctx.replyWithPhoto(input, { ...options, show_caption_above_media: true })
+    : ctx.replyWithDocument(input, options);
+}
+
+async function giveUp(
+  ctx: Context,
+  messageId: number,
+  attachments: readonly Attachment[],
+  error: unknown,
+): Promise<void> {
+  log.error('failed to send citation', { error });
+
+  for (const attachment of attachments) {
+    attachment.opened.body.destroy();
+    await notifyUnsent(ctx, messageId, attachment.file.summary);
+  }
+}
+
+async function sendBatch(
+  ctx: Context,
+  messageId: number,
+  attachments: readonly Attachment[],
+): Promise<void> {
+  const replyTo = { reply_parameters: { message_id: messageId } };
+
+  for (const media of ['photo', 'document'] as const) {
+    const group = attachments.filter((attachment) => attachment.media === media);
+    const [only] = group;
+
+    if (group.length === 1 && only !== undefined) {
+      await sendSingle(ctx, only, {
+        caption: only.file.summary.slice(0, CAPTION_LIMIT),
+        ...replyTo,
+      }).catch((error: unknown) => giveUp(ctx, messageId, group, error));
+
+      continue;
     }
 
-    await ctx.replyWithDocument(input, options);
-  } catch (error) {
-    opened.body.destroy();
-    await notifyUnsent(ctx, messageId, file.summary);
-    throw error;
+    if (group.length === 0) {
+      continue;
+    }
+
+    const items = group.map((attachment) => {
+      const options = { caption: attachment.file.summary.slice(0, CAPTION_LIMIT) };
+
+      return media === 'photo'
+        ? InputMediaBuilder.photo(inputFile(attachment), options)
+        : InputMediaBuilder.document(inputFile(attachment), options);
+    });
+
+    await (
+      media === 'photo'
+        ? ctx.replyWithMediaGroup(items as InputMediaPhoto[], replyTo)
+        : ctx.replyWithMediaGroup(items as InputMediaDocument[], replyTo)
+    ).catch((error: unknown) => giveUp(ctx, messageId, group, error));
+  }
+}
+
+async function sendFiles(
+  ctx: Context,
+  messageId: number,
+  storage: ObjectStorage,
+  files: readonly ReplyFile[],
+): Promise<void> {
+  const ordered = [
+    ...files.filter((file) => file.type === 'photo'),
+    ...files.filter((file) => file.type !== 'photo'),
+  ];
+
+  // Opened one album at a time so no R2 stream idles while another album uploads.
+  for (let start = 0; start < ordered.length; start += ALBUM_LIMIT) {
+    const opened: Attachment[] = [];
+
+    for (const file of ordered.slice(start, start + ALBUM_LIMIT)) {
+      const attachment = await openAttachment(ctx, messageId, storage, file);
+
+      if (attachment !== undefined) {
+        opened.push(attachment);
+      }
+    }
+
+    await sendBatch(ctx, messageId, opened);
+  }
+}
+
+function fitsCaption(html: string | undefined): html is string {
+  return (
+    html !== undefined &&
+    html.trim() !== '' &&
+    splitMessage(html, { format: 'html', maxLength: CAPTION_LIMIT }).length === 1
+  );
+}
+
+async function sendCaptioned(
+  ctx: Context,
+  messageId: number,
+  reply: RouteReply,
+  storage: ObjectStorage,
+  lead: ReplyFile,
+): Promise<{ message_id: number } | 'unsent' | undefined> {
+  if (!fitsCaption(reply.html)) {
+    return undefined;
+  }
+
+  const attachment = await openAttachment(ctx, messageId, storage, lead);
+
+  if (attachment === undefined) {
+    return 'unsent';
+  }
+
+  const markup = replyMarkup(reply);
+
+  try {
+    return await sendSingle(ctx, attachment, {
+      caption: reply.html,
+      parse_mode: 'HTML',
+      reply_parameters: { message_id: messageId },
+      ...(markup === undefined ? {} : { reply_markup: markup }),
+    });
+  } catch (error: unknown) {
+    log.error('failed to send the answer as a caption', { error });
+    attachment.opened.body.destroy();
+
+    return undefined;
   }
 }
 
@@ -222,18 +381,21 @@ async function sendReply(
   reply: RouteReply,
   storage: ObjectStorage,
 ): Promise<string> {
-  // The undo button reads callback_query.message.reply_to_message, so this has to be a real reply.
-  const sent = await sendText(ctx, messageId, reply);
-
   const files = reply.keyboard === 'undo' || reply.keyboard === 'save' ? reply.files : undefined;
+  const [lead, ...rest] = files ?? [];
 
-  if (files !== undefined) {
-    for (const file of files) {
-      await sendFile(ctx, messageId, storage, file).catch((error: unknown) => {
-        log.error('failed to send citation', { error });
-      });
-    }
-  }
+  // The undo button reads callback_query.message.reply_to_message, so this has to be a real reply.
+  const captioned =
+    lead === undefined ? undefined : await sendCaptioned(ctx, messageId, reply, storage, lead);
+
+  const sent =
+    captioned === undefined || captioned === 'unsent'
+      ? await sendText(ctx, messageId, reply)
+      : captioned;
+
+  const remaining = captioned === undefined ? (files ?? []) : rest;
+
+  await sendFiles(ctx, messageId, storage, remaining);
 
   return String(sent.message_id);
 }

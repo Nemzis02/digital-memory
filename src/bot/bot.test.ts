@@ -13,6 +13,7 @@ import type { UndoTarget } from '../core/pipeline/undo.ts';
 import { NOTHING_FOUND, type Answer } from '../core/retrieval/answer.ts';
 import { stubIntentClassifier, type IntentClassifier } from '../core/retrieval/intent.ts';
 import type { ObjectStorage } from '../core/storage/object-storage.ts';
+import type { Citation } from '../core/retrieval/answer.ts';
 import { createBot } from './bot.ts';
 
 const TOKEN = '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // gitleaks:allow
@@ -45,6 +46,8 @@ interface Sent {
     parse_mode?: string;
     reply_parameters?: { message_id?: number };
     reply_markup?: unknown;
+    show_caption_above_media?: boolean;
+    media?: { type: string; caption?: string }[];
   };
 }
 
@@ -161,6 +164,47 @@ function rejectingStorage(): ObjectStorage {
   };
 }
 
+function citingRetrieval(answer: string, citations: Citation[]): Retrieval & { forgotten: UUID[] } {
+  return {
+    ...recordingRetrieval(),
+    ask() {
+      return Promise.resolve<Answer>({ answer, citations });
+    },
+  };
+}
+
+function cited(summary: string, key: string, type: 'photo' | 'document'): Citation {
+  return { id: PARENT, summary, file: { key, type } };
+}
+
+function streamingStorage(
+  sizes: ReadonlyMap<string, number>,
+  destroyed: string[] = [],
+): ObjectStorage {
+  return {
+    ...rejectingStorage(),
+    openSized(key) {
+      if (!sizes.has(key) && !key.includes('mystery')) {
+        return Promise.reject(new Error('missing'));
+      }
+
+      // An S3 GetObject body is an IncomingMessage, which carries an empty `url`.
+      const body = Object.assign(Readable.from([key]), { url: '' });
+      const destroy = body.destroy.bind(body);
+
+      body.destroy = () => {
+        destroyed.push(key);
+
+        return destroy();
+      };
+
+      const size = sizes.get(key);
+
+      return Promise.resolve(size === undefined ? { body } : { body, size });
+    },
+  };
+}
+
 const phrasingFast: ChatModel = {
   id: 'fake-fast',
   complete: () => Promise.resolve('Ничего сохранённого нет.'),
@@ -197,6 +241,16 @@ function harness(
       return Promise.reject(new Error('cannot parse'));
     }
 
+    if (method === 'sendMediaGroup' && 'media' in payload && Array.isArray(payload.media)) {
+      const result = payload.media.map(() => {
+        messageId += 1;
+
+        return { message_id: messageId, date: 1, chat: { id: 7, type: 'private' as const } };
+      });
+
+      return Promise.resolve({ ok: true as const, result } as never);
+    }
+
     if (method === 'sendMessage' || method === 'sendPhoto' || method === 'sendDocument') {
       messageId += 1;
       const text = 'text' in payload ? String(payload.text) : '';
@@ -226,6 +280,22 @@ let updateId = 1;
 
 function update(body: Record<string, unknown>): Update {
   return { update_id: updateId++, ...body };
+}
+
+const ASK = {
+  classify: () => Promise.resolve({ intent: 'ask' as const, slots: { query: 'dentist' } }),
+};
+
+function askUpdate(text = 'when is the dentist'): Update {
+  return update({
+    message: {
+      message_id: 10,
+      date: 1_700_000_000,
+      chat: { id: 7, type: 'private' },
+      from: person(ADMIN),
+      text,
+    },
+  });
 }
 
 describe('createBot', () => {
@@ -293,7 +363,7 @@ describe('createBot', () => {
     }
   });
 
-  it('uploads a citation into the chat and skips a file that will not fit', async () => {
+  it('captions the first file with the answer and sends the rest as an album', async () => {
     const photo = 'photos/2026/03/dentist.jpg';
     const big = 'photos/2026/03/big.jpg';
     const pdf = 'documents/2026/03/card.pdf';
@@ -309,111 +379,170 @@ describe('createBot', () => {
       [huge, 50 * 1024 * 1024 + 1],
     ]);
 
-    const retrieval = {
-      ...recordingRetrieval(),
-      ask() {
-        return Promise.resolve<Answer>({
-          answer: 'Tuesday at 10.',
-          citations: [
-            {
-              id: PARENT,
-              summary: 'Appointment card',
-              file: { key: photo, type: 'photo' },
-            },
-            { id: PARENT, summary: 'Big card', file: { key: big, type: 'photo' } },
-            {
-              id: PARENT,
-              summary: 'Insurance card',
-              file: { key: pdf, type: 'document' },
-            },
-            {
-              id: PARENT,
-              summary: 'Archive',
-              file: { key: huge, type: 'document' },
-            },
-            {
-              id: PARENT,
-              summary: 'Unknown size',
-              file: { key: mystery, type: 'document' },
-            },
-            {
-              id: PARENT,
-              summary: 'Gone',
-              file: { key: missing, type: 'document' },
-            },
-          ],
-        });
-      },
-    };
-
-    const storage: ObjectStorage = {
-      ...rejectingStorage(),
-      openSized(key) {
-        if (key === missing) {
-          return Promise.reject(new Error('missing'));
-        }
-
-        const body = Readable.from([key]);
-        const destroy = body.destroy.bind(body);
-
-        body.destroy = () => {
-          destroyed.push(key);
-
-          return destroy();
-        };
-
-        const size = sizes.get(key);
-
-        return Promise.resolve(size === undefined ? { body } : { body, size });
-      },
-    };
-
-    const { bot, sent, conversations } = harness(retrieval, {
-      classifier: {
-        classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'dentist' } }),
-      },
-      storage,
-    });
-
-    await bot.handleUpdate(
-      update({
-        message: {
-          message_id: 10,
-          date: 1_700_000_000,
-          chat: { id: 7, type: 'private' },
-          from: person(ADMIN),
-          text: 'when is the dentist',
-        },
-      }),
-    );
-
-    expect(sent.map((item) => item.method)).toEqual([
-      'sendMessage',
-      'sendPhoto',
-      'sendDocument',
-      'sendDocument',
-      'sendMessage',
-      'sendMessage',
-      'sendMessage',
+    const retrieval = citingRetrieval('Tuesday at 10.', [
+      cited('Appointment card', photo, 'photo'),
+      cited('Big card', big, 'photo'),
+      cited('Insurance card', pdf, 'document'),
+      cited('Archive', huge, 'document'),
+      cited('Unknown size', mystery, 'document'),
+      cited('Gone', missing, 'document'),
     ]);
 
-    expect(sent[0]?.payload.text).toBe('Tuesday at 10.');
+    const { bot, sent, conversations } = harness(retrieval, {
+      classifier: ASK,
+      storage: streamingStorage(sizes, destroyed),
+    });
 
-    expect(sent[0]?.payload.text).not.toContain('photos/');
-    expect(sent[0]?.payload.text).not.toContain('documents/');
-    expect(sent[1]?.payload.caption).toBe('Appointment card');
-    expect(sent[2]?.payload.caption).toBe('Big card');
-    expect(sent[3]?.payload.caption).toBe('Insurance card');
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual([
+      'sendPhoto',
+      'sendMessage',
+      'sendMessage',
+      'sendMessage',
+      'sendMediaGroup',
+    ]);
+
+    expect(sent[0]?.payload.caption).toBe('Tuesday at 10.');
+    expect(sent[0]?.payload.parse_mode).toBe('HTML');
+    expect(sent[0]?.payload.show_caption_above_media).toBe(true);
+    expect(sent[0]?.payload.reply_parameters).toEqual({ message_id: 10 });
+    expect(JSON.stringify(sent[0]?.payload.reply_markup)).toContain('save');
+    expect(sent[0]?.payload.caption).not.toContain('photos/');
+    expect(sent[1]?.payload.text).toBe('Archive · 51 MB, not attached');
+    expect(sent[2]?.payload.text).toBe('Unknown size · not attached');
+    expect(sent[3]?.payload.text).toBe('Gone · not attached');
     expect(sent[1]?.payload.reply_parameters).toEqual({ message_id: 10 });
-    expect(sent[4]?.payload.text).toBe('Archive · 51 MB, not attached');
-    expect(sent[5]?.payload.text).toBe('Unknown size · not attached');
-    expect(sent[6]?.payload.text).toBe('Gone · not attached');
+    expect(sent[1]?.payload.reply_markup).toBeUndefined();
+    expect(sent[1]?.payload.text).not.toContain('huge');
+
+    expect(sent[4]?.payload.media?.map((item) => [item.type, item.caption])).toEqual([
+      ['document', 'Big card'],
+      ['document', 'Insurance card'],
+    ]);
+
     expect(sent[4]?.payload.reply_parameters).toEqual({ message_id: 10 });
-    expect(sent[4]?.payload.reply_markup).toBeUndefined();
-    expect(sent[4]?.payload.text).not.toContain('huge');
     expect(destroyed).toEqual([huge, mystery]);
-    expect(conversations.exchanges[0]?.assistant.body).toBe(sent[0]?.payload.text);
+    expect(conversations.exchanges[0]?.assistant.body).toBe('Tuesday at 10.');
     expect(conversations.exchanges[0]?.assistant.sourceRef).toBe('51');
+  });
+
+  it('sends one document when the answer fits its caption', async () => {
+    const pdf = 'documents/2026/03/card.pdf';
+
+    const { bot, sent } = harness(
+      citingRetrieval('**Tuesday**', [cited('Insurance card', pdf, 'document')]),
+      { classifier: ASK, storage: streamingStorage(new Map([[pdf, 20]])) },
+    );
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual(['sendDocument']);
+    expect(sent[0]?.payload.caption).toBe('<b>Tuesday</b>');
+    expect(sent[0]?.payload.show_caption_above_media).toBeUndefined();
+  });
+
+  it('sends the text first when the answer is longer than a caption', async () => {
+    const pdf = 'documents/2026/03/card.pdf';
+    const answer = 'a'.repeat(1025);
+
+    const { bot, sent, conversations } = harness(
+      citingRetrieval(answer, [cited('Insurance card', pdf, 'document')]),
+      { classifier: ASK, storage: streamingStorage(new Map([[pdf, 20]])) },
+    );
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual(['sendMessage', 'sendDocument']);
+    expect(sent[0]?.payload.text).toBe(answer);
+    expect(JSON.stringify(sent[0]?.payload.reply_markup)).toContain('save');
+    expect(sent[1]?.payload.caption).toBe('Insurance card');
+    expect(sent[1]?.payload.reply_markup).toBeUndefined();
+    expect(conversations.exchanges[0]?.assistant.sourceRef).toBe('51');
+  });
+
+  it('falls back to text and the file when telegram rejects the caption', async () => {
+    const pdf = 'documents/2026/03/card.pdf';
+    const destroyed: string[] = [];
+
+    const { bot, sent } = harness(
+      citingRetrieval('**Tuesday**', [cited('Insurance card', pdf, 'document')]),
+      {
+        classifier: ASK,
+        storage: streamingStorage(new Map([[pdf, 20]]), destroyed),
+        failHtml: true,
+      },
+    );
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual([
+      'sendDocument',
+      'sendMessage',
+      'sendMessage',
+      'sendDocument',
+    ]);
+
+    expect(sent[2]?.payload.text).toBe('**Tuesday**');
+    expect(sent[3]?.payload.caption).toBe('Insurance card');
+    expect(sent[3]?.payload.parse_mode).toBeUndefined();
+    expect(destroyed).toEqual([pdf]);
+  });
+
+  it('reports a missing first file once and still sends the others', async () => {
+    const missing = 'documents/2026/03/gone.pdf';
+    const pdf = 'documents/2026/03/card.pdf';
+
+    const { bot, sent } = harness(
+      citingRetrieval('Tuesday.', [
+        cited('Gone', missing, 'document'),
+        cited('Insurance card', pdf, 'document'),
+      ]),
+      { classifier: ASK, storage: streamingStorage(new Map([[pdf, 20]])) },
+    );
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual(['sendMessage', 'sendMessage', 'sendDocument']);
+    expect(sent[0]?.payload.text).toBe('Gone · not attached');
+    expect(sent[1]?.payload.text).toBe('Tuesday.');
+    expect(sent[2]?.payload.caption).toBe('Insurance card');
+  });
+
+  it('keeps photos and documents in separate albums, in citation order', async () => {
+    const keys = {
+      a: 'photos/2026/03/a.jpg',
+      b: 'documents/2026/03/b.pdf',
+      c: 'photos/2026/03/c.jpg',
+      d: 'documents/2026/03/d.pdf',
+      e: 'photos/2026/03/e.jpg',
+    };
+
+    const { bot, sent } = harness(
+      citingRetrieval('Here.', [
+        cited('A', keys.a, 'photo'),
+        cited('B', keys.b, 'document'),
+        cited('C', keys.c, 'photo'),
+        cited('D', keys.d, 'document'),
+        cited('E', keys.e, 'photo'),
+      ]),
+      {
+        classifier: ASK,
+        storage: streamingStorage(new Map(Object.values(keys).map((key) => [key, 10]))),
+      },
+    );
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual([
+      'sendPhoto',
+      'sendMediaGroup',
+      'sendMediaGroup',
+    ]);
+
+    expect(sent[0]?.payload.caption).toBe('Here.');
+    expect(sent[1]?.payload.media?.map((item) => item.caption)).toEqual(['C', 'E']);
+    expect(sent[2]?.payload.media?.map((item) => item.caption)).toEqual(['B', 'D']);
   });
 
   it('splits a long formatted reply and keeps the log as the clipped markdown', async () => {
