@@ -20,6 +20,7 @@ export function createChunkingNode() {
       summary: enrichment.summary,
       ...(message.sourceUrl === undefined ? {} : { source_url: message.sourceUrl }),
       r2_file_path: stored.key,
+      ...(stored.fileName === undefined ? {} : { file_name: stored.fileName }),
       metadata: {
         category: enrichment.category,
         kind: enrichment.kind,

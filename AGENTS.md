@@ -23,6 +23,10 @@
 what changed. The same goes for `git add`, `stash`, and `reset` — nothing may move work out of
 `git status`. Propose a commit message in chat if one is useful.
 
+**Review before calling it done.** Once code or specs changed, run the `change-review` skill on
+the working tree before saying the task is finished or proposing a commit message. Fix its
+Critical and required findings in the same turn; leave the rest to the user.
+
 ## Commit Convention
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/). This is enforced

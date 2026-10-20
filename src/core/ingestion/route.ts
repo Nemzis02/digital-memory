@@ -39,9 +39,8 @@ export interface ReplyFile extends CitationFile {
 }
 
 export type RouteReply =
-  | { text: string; html?: string; files?: ReplyFile[]; keyboard: 'undo' | 'save' }
-  | { text: string; html?: string; keyboard: 'forget'; parentId: UUID }
-  | { text: string; html?: string; keyboard: 'none' };
+  | { text: string; html?: string; files?: ReplyFile[]; keyboard: 'undo' | 'none' }
+  | { text: string; html?: string; keyboard: 'forget'; parentId: UUID };
 
 export interface RouteDeps {
   source: MemorySource;
@@ -108,7 +107,7 @@ function formatAnswer(answer: Answer): { text: string; html: string; files?: Rep
     const file = citation.file;
 
     if (file !== undefined) {
-      files.push({ key: file.key, type: file.type, summary: citation.summary });
+      files.push({ ...file, summary: citation.summary });
       continue;
     }
 
@@ -170,12 +169,12 @@ export async function respond(
   deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline' | 'retrieval' | 'fast'>,
   message: InboundMessage,
   context: readonly ConversationTurn[],
-  forced?: Intent,
+  forced?: 'ask',
 ): Promise<RouteReply> {
   const classified =
     forced === undefined
       ? await deps.classifier.classify({ text: turnBody(message), context })
-      : { intent: forced, slots: forced === 'save' ? {} : { query: turnBody(message) } };
+      : { intent: forced, slots: { query: turnBody(message) } };
 
   const slots = slotsFor(classified.intent, classified.slots, message);
 
@@ -200,7 +199,7 @@ export async function respond(
       return present({
         text,
         html: missed ? escapeHtml(text) : formatted.html,
-        keyboard: 'save',
+        keyboard: 'none',
         ...(formatted.files === undefined ? {} : { files: formatted.files }),
       });
     }
@@ -220,7 +219,7 @@ export async function respond(
           listed === NOTHING_FOUND
             ? await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND)
             : listed,
-        keyboard: 'save',
+        keyboard: 'none',
       });
     }
 
@@ -230,7 +229,7 @@ export async function respond(
       if (parent === undefined) {
         return present({
           text: await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND),
-          keyboard: 'save',
+          keyboard: 'none',
         });
       }
 
@@ -247,7 +246,7 @@ export async function dispatch(
   deps: RouteDeps,
   message: InboundMessage,
   send: (reply: RouteReply) => Promise<string>,
-  options?: { intent?: Intent; userTurn?: { body: string; sourceRef: string } },
+  options?: { intent?: 'ask'; userTurn?: { body: string; sourceRef: string } },
 ): Promise<RouteReply> {
   const now = deps.now ?? (() => new Date());
 

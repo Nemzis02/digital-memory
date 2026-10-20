@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isObjectKey, objectKey, OCTET_STREAM, resolveContent } from './content.ts';
+import {
+  contentDisposition,
+  downloadName,
+  isObjectKey,
+  objectKey,
+  OCTET_STREAM,
+  resolveContent,
+  safeFileName,
+} from './content.ts';
 
 const bytes = (...values: (number | string)[]): Uint8Array =>
   Uint8Array.from(
@@ -17,11 +25,13 @@ describe('resolveContent', () => {
     await expect(resolveContent(JPEG, 'text/html', 'selfie.html')).resolves.toStrictEqual({
       contentType: 'image/jpeg',
       extension: 'jpg',
+      sniffed: true,
     });
 
     await expect(resolveContent(PDF, 'image/png', 'invoice.png')).resolves.toStrictEqual({
       contentType: 'application/pdf',
       extension: 'pdf',
+      sniffed: true,
     });
   });
 
@@ -29,6 +39,7 @@ describe('resolveContent', () => {
     await expect(resolveContent(TEXT, 'text/plain; charset=utf-8', 'notes.txt')).resolves.toEqual({
       contentType: 'text/plain',
       extension: 'txt',
+      sniffed: false,
     });
   });
 
@@ -66,5 +77,86 @@ describe('objectKey', () => {
     expect(isObjectKey('documents/2026/03/../../../secrets.pdf')).toBe(false);
     expect(isObjectKey('backups/2026/03/00000000-0000-4000-8000-000000000000.pdf')).toBe(false);
     expect(isObjectKey('documents/2026/03/not-a-uuid.pdf')).toBe(false);
+  });
+});
+
+describe('safeFileName', () => {
+  it('keeps a readable name, Cyrillic included', () => {
+    expect(safeFileName('  Программа  Fallas 2023.pdf ')).toBe('Программа Fallas 2023.pdf');
+  });
+
+  it('drops any path and the leading dots that would hide or climb', () => {
+    expect(safeFileName('../../etc/passwd')).toBe('passwd');
+    expect(safeFileName('C:\\Users\\me\\card.pdf')).toBe('card.pdf');
+    expect(safeFileName('.env')).toBe('env');
+  });
+
+  it('strips control characters a header could not carry', () => {
+    expect(safeFileName('bad\r\nname\u0000.pdf')).toBe('badname.pdf');
+  });
+
+  it('returns nothing when no usable name is left', () => {
+    expect(safeFileName(undefined)).toBeUndefined();
+    expect(safeFileName('   ')).toBeUndefined();
+    expect(safeFileName('../')).toBeUndefined();
+    expect(safeFileName('...')).toBeUndefined();
+  });
+
+  it('caps the length and keeps the extension', () => {
+    const name = safeFileName(`${'a'.repeat(300)}.pdf`);
+
+    expect(name).toHaveLength(255);
+    expect(name?.endsWith('.pdf')).toBe(true);
+  });
+});
+
+describe('contentDisposition', () => {
+  it('forces a download with no name', () => {
+    expect(contentDisposition()).toBe('attachment');
+  });
+
+  it('carries an ASCII fallback and the UTF-8 name', () => {
+    expect(contentDisposition("Программа (2023) 'v2'.pdf")).toBe(
+      'attachment; filename="_________ (2023) \'v2\'.pdf"; ' +
+        "filename*=UTF-8''%D0%9F%D1%80%D0%BE%D0%B3%D1%80%D0%B0%D0%BC%D0%BC%D0%B0%20%282023%29%20%27v2%27.pdf",
+    );
+  });
+
+  it('cannot be broken out of by a quote', () => {
+    expect(contentDisposition('a"b.pdf')).toBe(
+      `attachment; filename="a_b.pdf"; filename*=UTF-8''a%22b.pdf`,
+    );
+  });
+});
+
+describe('downloadName', () => {
+  it('keeps a name whose extension matches the bytes, in any case', () => {
+    expect(downloadName('Card.PDF', 'pdf')).toBe('Card.PDF');
+  });
+
+  it('appends the sniffed extension when the name claims another type', () => {
+    expect(downloadName('selfie.html', 'jpg')).toBe('selfie.html.jpg');
+    expect(downloadName('README', 'pdf')).toBe('README.pdf');
+  });
+
+  it('leaves the name alone when the bytes have no recognisable type', () => {
+    expect(downloadName('README')).toBe('README');
+    expect(downloadName('notes.md')).toBe('notes.md');
+  });
+
+  it('truncates by code points, so an emoji is never split', () => {
+    const name = downloadName('😀'.repeat(300), 'pdf');
+
+    expect([...(name ?? '')]).toHaveLength(255);
+    expect(name?.endsWith('😀.pdf')).toBe(true);
+    expect(() => contentDisposition(name)).not.toThrow();
+  });
+
+  it('stays within the length cap after appending', () => {
+    expect(downloadName('a'.repeat(300), 'pdf')).toHaveLength(255);
+  });
+
+  it('returns nothing for a name with nothing usable', () => {
+    expect(downloadName('../', 'pdf')).toBeUndefined();
   });
 });

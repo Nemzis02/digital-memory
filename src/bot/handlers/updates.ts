@@ -1,23 +1,15 @@
 import type { UUID } from 'node:crypto';
-import { Readable } from 'node:stream';
-import type { ReadableStream } from 'node:stream/web';
-import { InlineKeyboard, InputFile, InputMediaBuilder, type Context } from 'grammy';
+import { InlineKeyboard, type Context } from 'grammy';
 import { splitMessage } from 'md-to-telegram';
-import type {
-  CallbackQuery,
-  InputMediaDocument,
-  InputMediaPhoto,
-  Message,
-  MaybeInaccessibleMessage,
-  User,
-} from 'grammy/types';
+import type { CallbackQuery, Message, MaybeInaccessibleMessage, User } from 'grammy/types';
 import { z } from 'zod';
 import { logger } from '../../core/logging/logger.ts';
 import { dispatch, forgetResult } from '../../core/ingestion/route.ts';
-import type { ReplyFile, RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
+import type { RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
 import type { InboundFile, InboundMessage } from '../../core/ingestion/inbound.ts';
 import { turnBody } from '../../core/ingestion/inbound.ts';
-import type { ObjectStorage, OpenedObject } from '../../core/storage/object-storage.ts';
+import type { ObjectStorage } from '../../core/storage/object-storage.ts';
+import { sendCaptioned, sendFiles } from '../attachments.ts';
 
 const log = logger.child({ module: 'bot/handlers' });
 
@@ -25,39 +17,11 @@ export const UNSUPPORTED = "Can't store that.";
 
 const STORE_FAILED = 'Could not store that.';
 
-const CALLBACK = { undo: 'undo', save: 'save' } as const;
+const UNDO = 'undo';
 
 const FORGET_PREFIX = 'forget:';
 
 const FORGET_FAILED = 'Could not forget that.';
-
-const PHOTO_BYTES = 10 * 1024 * 1024;
-
-const DOCUMENT_BYTES = 50 * 1024 * 1024;
-
-const NOTICE_LIMIT = 4096;
-
-const CAPTION_LIMIT = 1024;
-
-const ALBUM_LIMIT = 10;
-
-function unsentLine(summary: string, size?: number): string {
-  const detail =
-    size === undefined ? 'not attached' : `${Math.ceil(size / (1024 * 1024))} MB, not attached`;
-
-  return `${summary} · ${detail}`.slice(0, NOTICE_LIMIT);
-}
-
-async function notifyUnsent(
-  ctx: Context,
-  messageId: number,
-  summary: string,
-  size?: number,
-): Promise<void> {
-  await ctx.reply(unsentLine(summary, size), {
-    reply_parameters: { message_id: messageId },
-  });
-}
 
 function displayName(from: User): string {
   return [from.first_name, from.last_name]
@@ -135,206 +99,9 @@ export function replyMarkup(reply: RouteReply): InlineKeyboard | undefined {
     case 'none':
       return undefined;
     case 'undo':
-      return new InlineKeyboard().text('Undo', CALLBACK.undo);
-    case 'save':
-      return new InlineKeyboard().text('Save', CALLBACK.save);
+      return new InlineKeyboard().text('Undo', UNDO);
     case 'forget':
       return new InlineKeyboard().text('Forget', `${FORGET_PREFIX}${reply.parentId}`);
-  }
-}
-
-type Media = 'photo' | 'document';
-
-interface Attachment {
-  file: ReplyFile;
-  opened: OpenedObject;
-  media: Media;
-}
-
-// S3 bodies are IncomingMessages, and grammY fetches anything with a `url` key as a URL.
-export function storedInputFile(body: Readable, key: string): InputFile {
-  const name = key.slice(key.lastIndexOf('/') + 1);
-
-  return new InputFile(
-    Readable.toWeb(body) as ReadableStream<Uint8Array>,
-    name === '' ? undefined : name,
-  );
-}
-
-function inputFile(attachment: Attachment): InputFile {
-  return storedInputFile(attachment.opened.body, attachment.file.key);
-}
-
-async function openAttachment(
-  ctx: Context,
-  messageId: number,
-  storage: ObjectStorage,
-  file: ReplyFile,
-): Promise<Attachment | undefined> {
-  let opened: OpenedObject;
-
-  try {
-    opened = await storage.openSized(file.key);
-  } catch (error: unknown) {
-    log.error('failed to open citation', { error });
-    await notifyUnsent(ctx, messageId, file.summary);
-    return undefined;
-  }
-
-  const size = opened.size;
-
-  if (size === undefined || size > DOCUMENT_BYTES) {
-    opened.body.destroy();
-
-    await (size === undefined
-      ? notifyUnsent(ctx, messageId, file.summary)
-      : notifyUnsent(ctx, messageId, file.summary, size));
-
-    return undefined;
-  }
-
-  const media = file.type === 'photo' && size <= PHOTO_BYTES ? 'photo' : 'document';
-
-  return { file, opened, media };
-}
-
-function sendSingle(
-  ctx: Context,
-  attachment: Attachment,
-  options: {
-    caption: string;
-    reply_parameters: { message_id: number };
-    parse_mode?: 'HTML';
-    reply_markup?: InlineKeyboard;
-  },
-): Promise<{ message_id: number }> {
-  const input = inputFile(attachment);
-
-  return attachment.media === 'photo'
-    ? ctx.replyWithPhoto(input, { ...options, show_caption_above_media: true })
-    : ctx.replyWithDocument(input, options);
-}
-
-async function giveUp(
-  ctx: Context,
-  messageId: number,
-  attachments: readonly Attachment[],
-  error: unknown,
-): Promise<void> {
-  log.error('failed to send citation', { error });
-
-  for (const attachment of attachments) {
-    attachment.opened.body.destroy();
-    await notifyUnsent(ctx, messageId, attachment.file.summary);
-  }
-}
-
-async function sendBatch(
-  ctx: Context,
-  messageId: number,
-  attachments: readonly Attachment[],
-): Promise<void> {
-  const replyTo = { reply_parameters: { message_id: messageId } };
-
-  for (const media of ['photo', 'document'] as const) {
-    const group = attachments.filter((attachment) => attachment.media === media);
-    const [only] = group;
-
-    if (group.length === 1 && only !== undefined) {
-      await sendSingle(ctx, only, {
-        caption: only.file.summary.slice(0, CAPTION_LIMIT),
-        ...replyTo,
-      }).catch((error: unknown) => giveUp(ctx, messageId, group, error));
-
-      continue;
-    }
-
-    if (group.length === 0) {
-      continue;
-    }
-
-    const items = group.map((attachment) => {
-      const options = { caption: attachment.file.summary.slice(0, CAPTION_LIMIT) };
-
-      return media === 'photo'
-        ? InputMediaBuilder.photo(inputFile(attachment), options)
-        : InputMediaBuilder.document(inputFile(attachment), options);
-    });
-
-    await (
-      media === 'photo'
-        ? ctx.replyWithMediaGroup(items as InputMediaPhoto[], replyTo)
-        : ctx.replyWithMediaGroup(items as InputMediaDocument[], replyTo)
-    ).catch((error: unknown) => giveUp(ctx, messageId, group, error));
-  }
-}
-
-async function sendFiles(
-  ctx: Context,
-  messageId: number,
-  storage: ObjectStorage,
-  files: readonly ReplyFile[],
-): Promise<void> {
-  const ordered = [
-    ...files.filter((file) => file.type === 'photo'),
-    ...files.filter((file) => file.type !== 'photo'),
-  ];
-
-  // Opened one album at a time so no R2 stream idles while another album uploads.
-  for (let start = 0; start < ordered.length; start += ALBUM_LIMIT) {
-    const opened: Attachment[] = [];
-
-    for (const file of ordered.slice(start, start + ALBUM_LIMIT)) {
-      const attachment = await openAttachment(ctx, messageId, storage, file);
-
-      if (attachment !== undefined) {
-        opened.push(attachment);
-      }
-    }
-
-    await sendBatch(ctx, messageId, opened);
-  }
-}
-
-function fitsCaption(html: string | undefined): html is string {
-  return (
-    html !== undefined &&
-    html.trim() !== '' &&
-    splitMessage(html, { format: 'html', maxLength: CAPTION_LIMIT }).length === 1
-  );
-}
-
-async function sendCaptioned(
-  ctx: Context,
-  messageId: number,
-  reply: RouteReply,
-  storage: ObjectStorage,
-  lead: ReplyFile,
-): Promise<{ message_id: number } | 'unsent' | undefined> {
-  if (!fitsCaption(reply.html)) {
-    return undefined;
-  }
-
-  const attachment = await openAttachment(ctx, messageId, storage, lead);
-
-  if (attachment === undefined) {
-    return 'unsent';
-  }
-
-  const markup = replyMarkup(reply);
-
-  try {
-    return await sendSingle(ctx, attachment, {
-      caption: reply.html,
-      parse_mode: 'HTML',
-      reply_parameters: { message_id: messageId },
-      ...(markup === undefined ? {} : { reply_markup: markup }),
-    });
-  } catch (error: unknown) {
-    log.error('failed to send the answer as a caption', { error });
-    attachment.opened.body.destroy();
-
-    return undefined;
   }
 }
 
@@ -381,12 +148,14 @@ async function sendReply(
   reply: RouteReply,
   storage: ObjectStorage,
 ): Promise<string> {
-  const files = reply.keyboard === 'undo' || reply.keyboard === 'save' ? reply.files : undefined;
+  const files = 'files' in reply ? reply.files : undefined;
   const [lead, ...rest] = files ?? [];
 
   // The undo button reads callback_query.message.reply_to_message, so this has to be a real reply.
   const captioned =
-    lead === undefined ? undefined : await sendCaptioned(ctx, messageId, reply, storage, lead);
+    lead === undefined
+      ? undefined
+      : await sendCaptioned(ctx, messageId, storage, lead, reply.html, replyMarkup(reply));
 
   const sent =
     captioned === undefined || captioned === 'unsent'
@@ -569,7 +338,11 @@ export async function handleCallback(
     return;
   }
 
-  const action = data === CALLBACK.undo || data === CALLBACK.save ? data : undefined;
+  // Callback data this build does not know, such as a button on an older reply, is ignored.
+  if (data !== UNDO) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
 
   const message = callbackMessage(callback);
   const replied = message?.reply_to_message;
@@ -577,14 +350,9 @@ export async function handleCallback(
   const from = accessible?.from;
 
   const original =
-    action !== undefined && accessible !== undefined && from !== undefined
+    accessible !== undefined && from !== undefined
       ? inboundFromMessage(accessible, from)
       : undefined;
-
-  if (action === undefined) {
-    await ctx.answerCallbackQuery();
-    return;
-  }
 
   if (message === undefined || accessible === undefined || original === undefined) {
     await ctx.answerCallbackQuery({ text: 'Original message is gone' });
@@ -593,23 +361,18 @@ export async function handleCallback(
 
   await ctx.answerCallbackQuery();
 
-  if (action === CALLBACK.undo) {
-    await deps.pipeline
-      .undo({ source: deps.source, sourceRef: original.sourceRef })
-      .catch((error: unknown) => {
-        log.error('failed to undo the ingestion', { error, sourceRef: original.sourceRef });
-      });
-  }
+  await deps.pipeline
+    .undo({ source: deps.source, sourceRef: original.sourceRef })
+    .catch((error: unknown) => {
+      log.error('failed to undo the ingestion', { error, sourceRef: original.sourceRef });
+    });
 
   try {
     await dispatch(
       deps,
       original,
       (reply) => sendReply(ctx, accessible.message_id, reply, storage),
-      {
-        intent: action === CALLBACK.undo ? 'ask' : 'save',
-        userTurn: { body: action, sourceRef: callback.id },
-      },
+      { intent: 'ask', userTurn: { body: UNDO, sourceRef: callback.id } },
     );
   } catch (error) {
     log.error('failed to reroute message', { error });

@@ -6,6 +6,7 @@ import type { MemoryCategory, MemoryKind, MemoryPayload, MemorySource } from '..
 export interface StoredFile {
   key: string;
   contentType: string;
+  fileName?: string;
 }
 
 export interface Enrichment {

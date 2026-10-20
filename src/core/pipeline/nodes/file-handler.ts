@@ -66,6 +66,15 @@ export function createFileHandlerNode(deps: Deps) {
 
     log.info('stored', { type: message.type, key: stored.key, size: stored.size });
 
-    return { stored: { key: stored.key, contentType: stored.contentType } };
+    // Notes and links upload under internal names like `page.html`; only a sender's name is kept.
+    const fileName = message.file === undefined ? undefined : stored.fileName;
+
+    return {
+      stored: {
+        key: stored.key,
+        contentType: stored.contentType,
+        ...(fileName === undefined ? {} : { fileName }),
+      },
+    };
   };
 }

@@ -480,6 +480,7 @@ describe('ask', () => {
       id: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff',
       type: 'document',
       r2_file_path: 'documents/2026/03/card.pdf',
+      file_name: 'Tarjeta sanitaria.pdf',
       summary: 'Insurance card',
     };
 
@@ -501,16 +502,20 @@ describe('ask', () => {
       reply: `Tuesday at 10.\n\nSources: ${page.id} ${pdf.id} ${voice.id}`,
     });
 
-    await expect(ask(box.deps, { query: 'recipe' })).resolves.toMatchObject({
+    const answer = await ask(box.deps, { query: 'recipe' });
+
+    expect(answer).toMatchObject({
       citations: [
         { id: page.id, summary: 'Paella recipe', url: 'https://example.com/paella' },
-        {
-          id: pdf.id,
-          summary: 'Insurance card',
-          file: { key: 'documents/2026/03/card.pdf', type: 'document' },
-        },
+        { id: pdf.id, summary: 'Insurance card' },
         { id: voice.id, summary: 'Spoken reminder' },
       ],
+    });
+
+    expect(answer.citations[1]?.file).toStrictEqual({
+      key: 'documents/2026/03/card.pdf',
+      type: 'document',
+      name: 'Tarjeta sanitaria.pdf',
     });
   });
 

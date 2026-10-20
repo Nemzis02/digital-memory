@@ -110,6 +110,12 @@ type must parse as a bare MIME token before it is used. Keys are
 `Content-Disposition: attachment`, which is what stops a pre-signed URL rendering a sender's
 SVG on `*.r2.cloudflarestorage.com` — sniffing cannot, since SVG is XML with no signature.
 
+_2026-10-20:_ a document keeps the sender's file name. `upload()` cleans it once (no path, no
+control characters, at most 255 code points), appends the sniffed extension when the name claims
+another type, writes it into `Content-Disposition` as `filename` and `filename*`, and returns it.
+The pipeline stores that value as `file_name`; notes and links upload under internal names and get
+none.
+
 ## Task 4 — Done (2026-10-10)
 
 | File                              | Purpose                                                           |
@@ -172,6 +178,10 @@ reads `callback_query.message.reply_to_message` — the save reply is a real Tel
 is stored between the two updates. The button data is `undo` or `save`. Undo deletes the object whose
 key is in the reply text and re-routes as `ask`, which answers `not built yet` and offers Save. `ask`,
 `recall-by-filter`, and `forget` stay that reply until spec 002 Task 5.
+
+_2026-10-20:_ the Save button and its `save` callback are gone (ADR 002, decision 4 amendment); Undo
+re-routes as `ask` with no keyboard. Sending cited files moved from `updates.ts` to
+`src/bot/attachments.ts`.
 
 A photo, document, and voice note download through `FileSource` and upload as that `ObjectKind`. A note
 or a lone URL has no Telegram file, so the bytes go up as `document` (`note.txt` / `link.txt`). The

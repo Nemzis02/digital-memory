@@ -95,7 +95,13 @@ describe('createR2Storage', () => {
       fileName: 'selfie.html',
     });
 
-    expect(stored).toStrictEqual({ key: stored.key, size: 4, contentType: 'image/jpeg' });
+    expect(stored).toStrictEqual({
+      key: stored.key,
+      size: 4,
+      contentType: 'image/jpeg',
+      fileName: 'selfie.html.jpg',
+    });
+
     expect(stored.key).toMatch(/^photos\/2026\/03\/[0-9a-f-]{36}\.jpg$/);
     expect(sendMock.mock.calls[0]?.[0]).toBeInstanceOf(PutObjectCommand);
 
@@ -104,8 +110,38 @@ describe('createR2Storage', () => {
       Key: stored.key,
       Body: JPEG,
       ContentType: 'image/jpeg',
-      ContentDisposition: 'attachment',
+      ContentDisposition: `attachment; filename="selfie.html.jpg"; filename*=UTF-8''selfie.html.jpg`,
     });
+  });
+
+  it('downloads under the sender name, kept when it already matches the bytes', async () => {
+    await createR2Storage(env).upload({ kind: 'photo', body: JPEG, fileName: 'Паэлья.jpg' });
+
+    expect(commandInput(0).ContentDisposition).toBe(
+      `attachment; filename="______.jpg"; filename*=UTF-8''%D0%9F%D0%B0%D1%8D%D0%BB%D1%8C%D1%8F.jpg`,
+    );
+  });
+
+  it('forces a plain download when there is no name', async () => {
+    const stored = await createR2Storage(env).upload({ kind: 'photo', body: JPEG });
+
+    expect(commandInput(0).ContentDisposition).toBe('attachment');
+    expect(stored.fileName).toBeUndefined();
+  });
+
+  it('keeps a name without an extension when the bytes have no recognisable type', async () => {
+    const stored = await createR2Storage(env).upload({
+      kind: 'document',
+      body: new TextEncoder().encode('plain notes'),
+      contentType: 'text/plain',
+      fileName: 'README',
+    });
+
+    expect(stored.fileName).toBe('README');
+
+    expect(commandInput(0).ContentDisposition).toBe(
+      `attachment; filename="README"; filename*=UTF-8''README`,
+    );
   });
 
   it('keeps a caller-supplied key so a retried upload does not orphan an object', async () => {

@@ -28,6 +28,9 @@ Phase 2, and the only question was whether to pretend otherwise until then.
 4. **Misclassification is recovered by the user, not by saving everything.** The reply carries an
    inline keyboard — save-as-memory on an answer, undo on a save. Saving every question instead
    would fill the collection with transient text and degrade retrieval.
+   _Amended 2026-10-20:_ the save-as-memory button is removed. It offered to store the
+   question text, which is rarely wanted; an explicit save is an explicit message. Undo on a
+   save stays. ADR 004 proposes replacing this decision outright.
 5. **A chat is a conversation, stored in Postgres.** Each Telegram chat (and each MCP thread)
    is one `conversations` row; every user message and bot reply is a `conversation_turns` row.
    A new message sees the recent turns of that chat with no reply gesture required. The window

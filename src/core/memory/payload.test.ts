@@ -86,6 +86,22 @@ describe('parseMemoryPayload', () => {
     expect(parseMemoryPayload(fromEditor).source).toBe('mcp');
   });
 
+  it('keeps the sender file name of a stored document', () => {
+    const document = { ...valid, type: 'document', file_name: 'Программа 2023.pdf' };
+
+    expect(parseMemoryPayload(document)).toStrictEqual(document);
+  });
+
+  it('rejects a file name with no stored object to name', () => {
+    expect(() =>
+      parseMemoryPayload({ ...valid, r2_file_path: undefined, file_name: 'card.pdf' }),
+    ).toThrow(/needs r2_file_path/);
+  });
+
+  it('rejects an empty file name', () => {
+    expect(() => parseMemoryPayload({ ...valid, file_name: '' })).toThrow(TypeError);
+  });
+
   it('rejects a point id Qdrant would refuse', () => {
     expect(() => parseMemoryPayload({ ...valid, id: 'msg-1' })).toThrow(TypeError);
   });

@@ -47,7 +47,9 @@ interface Sent {
     reply_parameters?: { message_id?: number };
     reply_markup?: unknown;
     show_caption_above_media?: boolean;
-    media?: { type: string; caption?: string }[];
+    media?: { type: string; caption?: string; media?: { filename?: string } }[];
+    document?: { filename?: string };
+    photo?: { filename?: string };
   };
 }
 
@@ -173,8 +175,8 @@ function citingRetrieval(answer: string, citations: Citation[]): Retrieval & { f
   };
 }
 
-function cited(summary: string, key: string, type: 'photo' | 'document'): Citation {
-  return { id: PARENT, summary, file: { key, type } };
+function cited(summary: string, key: string, type: 'photo' | 'document', name?: string): Citation {
+  return { id: PARENT, summary, file: { key, type, ...(name === undefined ? {} : { name }) } };
 }
 
 function streamingStorage(
@@ -407,7 +409,7 @@ describe('createBot', () => {
     expect(sent[0]?.payload.parse_mode).toBe('HTML');
     expect(sent[0]?.payload.show_caption_above_media).toBe(true);
     expect(sent[0]?.payload.reply_parameters).toEqual({ message_id: 10 });
-    expect(JSON.stringify(sent[0]?.payload.reply_markup)).toContain('save');
+    expect(sent[0]?.payload.reply_markup).toBeUndefined();
     expect(sent[0]?.payload.caption).not.toContain('photos/');
     expect(sent[1]?.payload.text).toBe('Archive · 51 MB, not attached');
     expect(sent[2]?.payload.text).toBe('Unknown size · not attached');
@@ -442,6 +444,34 @@ describe('createBot', () => {
     expect(sent[0]?.payload.show_caption_above_media).toBeUndefined();
   });
 
+  it('uploads each document under its original name, else under its key', async () => {
+    const named = 'documents/2026/03/006965cc-1637-4d40-a03e-d077d0a81af8.pdf';
+    const other = 'documents/2026/03/11111111-1637-4d40-a03e-d077d0a81af8.pdf';
+    const bare = 'documents/2026/03/22222222-1637-4d40-a03e-d077d0a81af8.pdf';
+
+    const { bot, sent } = harness(
+      citingRetrieval('Here.', [
+        cited('Programme', named, 'document', 'Programa Fallas 2023.pdf'),
+        cited('Card', other, 'document', 'Tarjeta.pdf'),
+        cited('Old', bare, 'document'),
+      ]),
+      {
+        classifier: ASK,
+        storage: streamingStorage(new Map([named, other, bare].map((key) => [key, 10]))),
+      },
+    );
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((item) => item.method)).toEqual(['sendDocument', 'sendMediaGroup']);
+    expect(sent[0]?.payload.document?.filename).toBe('Programa Fallas 2023.pdf');
+
+    expect(sent[1]?.payload.media?.map((item) => item.media?.filename)).toEqual([
+      'Tarjeta.pdf',
+      '22222222-1637-4d40-a03e-d077d0a81af8.pdf',
+    ]);
+  });
+
   it('sends the text first when the answer is longer than a caption', async () => {
     const pdf = 'documents/2026/03/card.pdf';
     const answer = 'a'.repeat(1025);
@@ -455,7 +485,7 @@ describe('createBot', () => {
 
     expect(sent.map((item) => item.method)).toEqual(['sendMessage', 'sendDocument']);
     expect(sent[0]?.payload.text).toBe(answer);
-    expect(JSON.stringify(sent[0]?.payload.reply_markup)).toContain('save');
+    expect(sent[0]?.payload.reply_markup).toBeUndefined();
     expect(sent[1]?.payload.caption).toBe('Insurance card');
     expect(sent[1]?.payload.reply_markup).toBeUndefined();
     expect(conversations.exchanges[0]?.assistant.sourceRef).toBe('51');
@@ -576,7 +606,7 @@ describe('createBot', () => {
     expect(sent[1]?.payload.text).toHaveLength(904);
     expect(sent[0]?.payload.parse_mode).toBe('HTML');
     expect(sent[1]?.payload.parse_mode).toBe('HTML');
-    expect(sent[0]?.payload.reply_markup).toBeDefined();
+    expect(sent[0]?.payload.reply_markup).toBeUndefined();
     expect(sent[1]?.payload.reply_markup).toBeUndefined();
     expect(sent[0]?.payload.reply_parameters).toEqual({ message_id: 10 });
     expect(sent[1]?.payload.reply_parameters).toEqual({ message_id: 10 });
@@ -640,7 +670,7 @@ describe('createBot', () => {
     expect(ingested).toEqual([]);
   });
 
-  it('undoes by the original message id and can then save it again', async () => {
+  it('undoes by the original message id, answers instead, and ignores a stale save', async () => {
     const { bot, sent, ingested, undone, conversations } = harness();
 
     const original = {
@@ -693,11 +723,7 @@ describe('createBot', () => {
       reply_parameters: { message_id: 10 },
     });
 
-    const answeredMarkup = answered?.payload.reply_markup as {
-      inline_keyboard: { text: string; callback_data: string }[][];
-    };
-
-    expect(answeredMarkup.inline_keyboard[0]?.[0]).toEqual({ text: 'Save', callback_data: 'save' });
+    expect(answered?.payload.reply_markup).toBeUndefined();
 
     expect(conversations.exchanges.map((exchange) => exchange.user.body)).toEqual([
       'buy milk',
@@ -722,9 +748,9 @@ describe('createBot', () => {
       }),
     );
 
-    expect(ingested).toHaveLength(2);
-    expect(replies()[2]?.payload.text).toContain('Filed one text.');
-    expect(replies()[2]?.payload.reply_parameters).toEqual({ message_id: 10 });
+    expect(ingested).toHaveLength(1);
+    expect(replies()).toHaveLength(2);
+    expect(sent.at(-1)?.method).toBe('answerCallbackQuery');
   });
 
   it('answers a callback that has no original message', async () => {

@@ -50,6 +50,7 @@ function fakeStorage(): ObjectStorage & { uploads: UploadInput[]; removed: strin
         key,
         size: input.body.byteLength,
         contentType: input.contentType ?? 'application/octet-stream',
+        ...(input.fileName === undefined ? {} : { fileName: `stored ${input.fileName}` }),
       });
     },
     presignDownload() {
@@ -276,6 +277,52 @@ describe('createIngestionPipeline', () => {
     });
 
     expect(embeddings.batches[0]?.[0]).toBe('Tapas at Bar Pepe. Valencia #tapas #bar_pepe');
+  });
+
+  it('stores the name storage settled on, on the parent and every child', async () => {
+    const { pipeline, store } = harness();
+
+    await pipeline.ingest({
+      source: 'telegram',
+      message: message({
+        type: 'document',
+        text: '',
+        file: { fileId: 'doc', fileName: '../Programa  2023.pdf', mimeType: 'application/pdf' },
+      }),
+    });
+
+    expect(store.records.length).toBeGreaterThan(1);
+
+    for (const record of store.records) {
+      expect(record.payload.file_name).toBe('stored ../Programa  2023.pdf');
+    }
+  });
+
+  it('names no file for a link, whose upload name is internal', async () => {
+    const { pipeline, store, storage } = harness();
+
+    await pipeline.ingest({
+      source: 'telegram',
+      message: message({
+        type: 'url',
+        text: 'https://example.com/tie',
+        sourceUrl: 'https://example.com/tie',
+      }),
+    });
+
+    expect(storage.uploads[0]?.fileName).toBe('page.html');
+    expect(store.records[0]?.payload.file_name).toBeUndefined();
+  });
+
+  it('names no file for a photo, which Telegram sends without one', async () => {
+    const { pipeline, store } = harness();
+
+    await pipeline.ingest({
+      source: 'telegram',
+      message: message({ type: 'photo', text: '', file: { fileId: 'p' } }),
+    });
+
+    expect(store.records[0]?.payload.file_name).toBeUndefined();
   });
 
   it('scrapes a link, keeps the address, and splits the article into several children', async () => {

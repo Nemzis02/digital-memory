@@ -16,6 +16,8 @@ export interface StoredObject {
   key: string;
   size: number;
   contentType: string;
+  // The cleaned name the object downloads under; absent when the sender gave none.
+  fileName?: string;
 }
 
 export interface OpenedObject {

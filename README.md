@@ -11,7 +11,7 @@
 - **Private Cloud Storage:** Secure asset storage in **Cloudflare R2** with ephemeral Pre-signed URLs (no public links).
 - **Durable State:** **PostgreSQL** via **Drizzle ORM** for OAuth2 sessions, tokens and user metadata, and as the LangGraph checkpoint store.
 - **IDE Access via MCP:** Native connection to Cursor/Windsurf via Server-Sent Events (SSE), protected by **Telegram OAuth2 SSO**.
-- **Agentic Workflow:** Powered by **LangGraph** for multi-step OCR and web scraping. Query reformulation (HyDE) is a hypothesis, not a commitment — see ADR 002.
+- **Agentic Workflow:** Powered by **LangGraph** for multi-step OCR and web scraping.
 
 ---
 

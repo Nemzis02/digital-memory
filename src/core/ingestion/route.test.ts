@@ -185,7 +185,7 @@ describe('respond', () => {
     expect(reply).toEqual({
       text: 'Ничего сохранённого нет.',
       html: 'Ничего сохранённого нет.',
-      keyboard: 'save',
+      keyboard: 'none',
     });
 
     expect(classify).not.toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe('respond', () => {
       text: 'Tuesday at 10.\n\nPaella page',
       html: 'Tuesday at 10.\n\n<a href="https://example.com/paella">Paella page</a>',
       files: [{ key: 'photos/2026/03/dentist.jpg', type: 'photo', summary: 'Appointment card' }],
-      keyboard: 'save',
+      keyboard: 'none',
     });
 
     expect(reply.text).not.toContain('photos/');
@@ -301,7 +301,7 @@ describe('respond', () => {
     expect(reply.text).not.toContain('signed.example');
 
     expect(reply).toMatchObject({
-      keyboard: 'save',
+      keyboard: 'none',
       html: [
         'a &lt; b &amp; c',
         '',
@@ -323,7 +323,7 @@ describe('respond', () => {
           {
             id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
             summary: 'Scan',
-            file: { key: 'documents/2026/03/scan.pdf', type: 'document' },
+            file: { key: 'documents/2026/03/scan.pdf', type: 'document', name: 'Escaneo.pdf' },
           },
         ],
       },
@@ -348,8 +348,15 @@ describe('respond', () => {
     expect(reply.html?.length).toBeGreaterThan(4096);
 
     expect(reply).toMatchObject({
-      files: [{ key: 'documents/2026/03/scan.pdf', type: 'document', summary: 'Scan' }],
-      keyboard: 'save',
+      files: [
+        {
+          key: 'documents/2026/03/scan.pdf',
+          type: 'document',
+          name: 'Escaneo.pdf',
+          summary: 'Scan',
+        },
+      ],
+      keyboard: 'none',
     });
   });
 
@@ -446,7 +453,7 @@ describe('respond', () => {
       [],
     );
 
-    expect(reply).toEqual({ text: '2026-02-25 · Appointment card', keyboard: 'save' });
+    expect(reply).toEqual({ text: '2026-02-25 · Appointment card', keyboard: 'none' });
 
     expect(retrieval.recalls).toEqual([
       { kinds: ['event'], orderBy: 'event_at', direction: 'asc' },
@@ -474,7 +481,7 @@ describe('respond', () => {
       [],
     );
 
-    expect(reply).toEqual({ text: '2023-11-14 · Appointment card', keyboard: 'save' });
+    expect(reply).toEqual({ text: '2023-11-14 · Appointment card', keyboard: 'none' });
   });
 
   it('asks to confirm a forget and does not delete yet', async () => {
@@ -521,7 +528,7 @@ describe('respond', () => {
       [],
     );
 
-    expect(reply).toEqual({ text: 'Ничего про стоматолога нет.', keyboard: 'save' });
+    expect(reply).toEqual({ text: 'Ничего про стоматолога нет.', keyboard: 'none' });
     expect(fast.asked).toEqual(['забудь стоматолога']);
     expect(retrieval.forgotten).toEqual([]);
   });
@@ -545,7 +552,7 @@ describe('respond', () => {
       [],
     );
 
-    expect(reply).toEqual({ text: 'Ничего сохранённого нет.', keyboard: 'save' });
+    expect(reply).toEqual({ text: 'Ничего сохранённого нет.', keyboard: 'none' });
     expect(fast.asked).toEqual(['что у меня по Валенсии']);
     expect(retrieval.asks).toEqual([]);
   });
@@ -569,7 +576,7 @@ describe('respond', () => {
 
     expect(reply.text).toHaveLength(4096);
     expect(reply.html).toHaveLength(5000);
-    expect(reply.keyboard).toBe('save');
+    expect(reply.keyboard).toBe('none');
   });
 });
 

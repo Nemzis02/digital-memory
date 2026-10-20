@@ -10,7 +10,13 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Env } from '../../config/env.ts';
 import { getEnv, r2Endpoint } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
-import { isObjectKey, objectKey, resolveContent } from './content.ts';
+import {
+  contentDisposition,
+  downloadName,
+  isObjectKey,
+  objectKey,
+  resolveContent,
+} from './content.ts';
 import type { ObjectStorage, OpenedObject } from './object-storage.ts';
 import { ObjectNotFoundError } from './object-storage.ts';
 
@@ -58,7 +64,7 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
 
   return {
     async upload(input) {
-      const { contentType, extension } = await resolveContent(
+      const { contentType, extension, sniffed } = await resolveContent(
         input.body,
         input.contentType,
         input.fileName,
@@ -69,6 +75,7 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
       }
 
       const key = input.key ?? objectKey(input.kind, extension);
+      const fileName = downloadName(input.fileName, sniffed ? extension : undefined);
 
       await client.send(
         new PutObjectCommand({
@@ -76,7 +83,7 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
           Key: key,
           Body: input.body,
           ContentType: contentType,
-          ContentDisposition: 'attachment',
+          ContentDisposition: contentDisposition(fileName),
         }),
       );
 
@@ -86,6 +93,7 @@ export function createR2Storage(env: Env = getEnv()): ObjectStorage {
         key,
         size: input.body.byteLength,
         contentType,
+        ...(fileName === undefined ? {} : { fileName }),
       };
     },
 

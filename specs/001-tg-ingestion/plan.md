@@ -68,6 +68,7 @@ interface MemoryPayload {
   summary: string; // Shown in the save confirmation; a child inherits its parent's
   source_url?: string; // Required when type is 'url'
   r2_file_path?: string; // Relative path in R2 bucket (e.g., "photos/2026/img1.jpg")
+  file_name?: string; // The sender's name for a document; photos and voice notes have none
   metadata: {
     // The life domain
     category:

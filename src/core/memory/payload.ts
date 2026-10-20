@@ -52,6 +52,7 @@ export const memoryPayloadSchema = z
     summary: z.string().min(1),
     source_url: z.url().optional(),
     r2_file_path: z.string().min(1).optional(),
+    file_name: z.string().min(1).max(255).optional(),
     metadata: z.strictObject({
       category: z.enum(MEMORY_CATEGORIES),
       kind: z.enum(MEMORY_KINDS),
@@ -68,6 +69,10 @@ export const memoryPayloadSchema = z
   .refine((payload) => payload.chunking.is_child === (payload.chunking.parent_id !== undefined), {
     error: 'is_child and parent_id must agree: a child points at a parent, a parent at nothing',
     path: ['chunking'],
+  })
+  .refine((payload) => payload.file_name === undefined || payload.r2_file_path !== undefined, {
+    error: 'a file name names a stored object, so it needs r2_file_path',
+    path: ['file_name'],
   })
   .refine((payload) => payload.type !== 'url' || payload.source_url !== undefined, {
     error: 'a url memory must keep its link: original_text holds the scrape, not the address',

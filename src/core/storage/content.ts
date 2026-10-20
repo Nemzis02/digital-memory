@@ -41,6 +41,7 @@ function extensionFromName(fileName: string | undefined): string | undefined {
 export interface ResolvedContent {
   contentType: string;
   extension: string;
+  sniffed: boolean;
 }
 
 export async function resolveContent(
@@ -54,12 +55,14 @@ export async function resolveContent(
     return {
       contentType: declaredType(declared) ?? OCTET_STREAM,
       extension: extensionFromName(fileName) ?? 'bin',
+      sniffed: false,
     };
   }
 
   return {
     contentType: sniffed.mime,
     extension: safeExtension(sniffed.ext) ?? 'bin',
+    sniffed: true,
   };
 }
 
@@ -76,4 +79,66 @@ const KEY = new RegExp(
 
 export function isObjectKey(key: string): boolean {
   return KEY.test(key);
+}
+
+const MAX_FILE_NAME = 255;
+
+// Telegram passes the sender's name through untouched; it reaches an HTTP header and an upload.
+export function safeFileName(name: string | undefined): string | undefined {
+  const base = name?.split(/[/\\]/).at(-1) ?? '';
+
+  const cleaned = base
+    .replaceAll(/\p{Cc}/gu, '')
+    .replaceAll(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '')
+    .trim();
+
+  if (cleaned === '') {
+    return undefined;
+  }
+
+  const chars = [...cleaned];
+
+  if (chars.length <= MAX_FILE_NAME) {
+    return cleaned;
+  }
+
+  const dot = cleaned.lastIndexOf('.');
+  const extension = dot > 0 ? [...cleaned.slice(dot)] : [];
+  const keep = extension.length <= 16 ? extension : [];
+
+  return [...chars.slice(0, MAX_FILE_NAME - keep.length), ...keep].join('');
+}
+
+// A sniffed extension wins, so a sender cannot label JPEG bytes as `selfie.html`.
+export function downloadName(name: string | undefined, sniffed?: string): string | undefined {
+  const safe = safeFileName(name);
+
+  if (safe === undefined || sniffed === undefined || safe.toLowerCase().endsWith(`.${sniffed}`)) {
+    return safe;
+  }
+
+  // Code points, not UTF-16 units: a split surrogate pair makes encodeURIComponent throw.
+  const head = [...safe].slice(0, MAX_FILE_NAME - sniffed.length - 1).join('');
+
+  return `${head}.${sniffed}`;
+}
+
+function percentEncoded(value: string): string {
+  return encodeURIComponent(value).replaceAll(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
+// RFC 6266: an ASCII `filename` for old clients, `filename*` for the real name.
+export function contentDisposition(fileName?: string): string {
+  if (fileName === undefined) {
+    return 'attachment';
+  }
+
+  const ascii = fileName.replaceAll(/[^\x20-\x7e]|["\\]/g, '_');
+
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${percentEncoded(fileName)}`;
 }

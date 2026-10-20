@@ -110,7 +110,12 @@ function cite(parents: readonly MemoryPayload[]): Citation[] {
     }
 
     if ((parent.type === 'photo' || parent.type === 'document') && key !== undefined) {
-      return { ...cited, file: { key, type: parent.type } };
+      const name = parent.file_name;
+
+      return {
+        ...cited,
+        file: { key, type: parent.type, ...(name === undefined ? {} : { name }) },
+      };
     }
 
     return cited;
