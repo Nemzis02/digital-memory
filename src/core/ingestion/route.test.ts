@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConversationLog } from '../conversation/store.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import type { AppendExchange } from '../conversation/store.ts';
+import type { ChatModel } from '../llm/router.ts';
 import type { MemoryPayload } from '../memory/payload.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
 import type { IngestionInput } from '../pipeline/state.ts';
@@ -10,6 +11,27 @@ import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
 import type { IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
 import type { InboundMessage } from './inbound.ts';
 import { dispatch, forgetResult, respond, savedReply, type Retrieval } from './route.ts';
+
+function fastModel(reply: string): ChatModel & { asked: string[] } {
+  const asked: string[] = [];
+
+  return {
+    asked,
+    id: 'fake-fast',
+    complete(request) {
+      const part = request.turns[0]?.parts[0];
+
+      asked.push(part?.type === 'text' ? part.text : '');
+
+      return Promise.resolve(reply);
+    },
+    object() {
+      return Promise.reject(new Error('unused'));
+    },
+  };
+}
+
+const quietFast = fastModel('unused');
 
 function message(text: string, replyToSourceRef?: string): InboundMessage {
   return {
@@ -148,13 +170,24 @@ describe('respond', () => {
     const retrieval = spyRetrieval();
 
     const reply = await respond(
-      { source: 'telegram', classifier: { classify }, pipeline: ingestion, retrieval },
+      {
+        source: 'telegram',
+        classifier: { classify },
+        pipeline: ingestion,
+        retrieval,
+        fast: fastModel('Ничего сохранённого нет.'),
+      },
       message('buy milk'),
       [],
       'ask',
     );
 
-    expect(reply).toEqual({ text: NOTHING_FOUND, html: NOTHING_FOUND, keyboard: 'save' });
+    expect(reply).toEqual({
+      text: 'Ничего сохранённого нет.',
+      html: 'Ничего сохранённого нет.',
+      keyboard: 'save',
+    });
+
     expect(classify).not.toHaveBeenCalled();
     expect(ingestion.ingested).toEqual([]);
     expect(retrieval.asks).toEqual([{ query: 'buy milk' }]);
@@ -192,6 +225,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('when is it'),
       [],
@@ -225,6 +259,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('when'),
       [],
@@ -256,6 +291,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('card'),
       [],
@@ -301,6 +337,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('when'),
       [],
@@ -316,27 +353,55 @@ describe('respond', () => {
     });
   });
 
-  it('answers small talk without searching', async () => {
+  it('answers a greeting in the language of the message', async () => {
+    const retrieval = spyRetrieval();
+    const fast = fastModel('Нормально. Спрашивай, что сохранено.');
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () => Promise.resolve({ intent: 'chat', slots: { query: 'Привет' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+        fast,
+      },
+      message('Привет'),
+      [],
+    );
+
+    expect(reply).toEqual({ text: 'Нормально. Спрашивай, что сохранено.', keyboard: 'none' });
+    expect(fast.asked).toEqual(['Привет']);
+    expect(retrieval.asks).toEqual([]);
+    expect(retrieval.recalls).toEqual([]);
+    expect(retrieval.resolved).toEqual([]);
+    expect(retrieval.forgotten).toEqual([]);
+  });
+
+  it('keeps the english line when a greeting cannot be phrased', async () => {
     const retrieval = spyRetrieval();
 
     const reply = await respond(
       {
         source: 'telegram',
         classifier: {
-          classify: () => Promise.resolve({ intent: 'chat', slots: { query: 'how are you' } }),
+          classify: () => Promise.resolve({ intent: 'chat', slots: { query: 'Привет' } }),
         },
         pipeline: pipeline(),
         retrieval,
+        fast: {
+          id: 'fake-fast',
+          complete: () => Promise.reject(new Error('down')),
+          object: () => Promise.reject(new Error('unused')),
+        },
       },
-      message('how are you'),
+      message('Привет'),
       [],
     );
 
-    expect(reply).toEqual({ text: "Ask me about something you've saved.", keyboard: 'save' });
+    expect(reply).toEqual({ text: "Ask me about something you've saved.", keyboard: 'none' });
     expect(retrieval.asks).toEqual([]);
-    expect(retrieval.recalls).toEqual([]);
-    expect(retrieval.resolved).toEqual([]);
-    expect(retrieval.forgotten).toEqual([]);
   });
 
   it('uses the message text when ask or forget has no query', async () => {
@@ -350,6 +415,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('forget the dentist'),
       [],
@@ -374,6 +440,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('what is coming up'),
       [],
@@ -401,6 +468,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('what did I save'),
       [],
@@ -420,6 +488,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('forget the dentist'),
       [],
@@ -434,8 +503,9 @@ describe('respond', () => {
     expect(retrieval.forgotten).toEqual([]);
   });
 
-  it('offers save when forget finds nothing', async () => {
+  it('phrases a forget that finds nothing in the user language', async () => {
     const retrieval = spyRetrieval();
+    const fast = fastModel('Ничего про стоматолога нет.');
 
     const reply = await respond(
       {
@@ -445,13 +515,39 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast,
       },
-      message('forget the dentist'),
+      message('забудь стоматолога'),
       [],
     );
 
-    expect(reply).toEqual({ text: NOTHING_FOUND, keyboard: 'save' });
+    expect(reply).toEqual({ text: 'Ничего про стоматолога нет.', keyboard: 'save' });
+    expect(fast.asked).toEqual(['забудь стоматолога']);
     expect(retrieval.forgotten).toEqual([]);
+  });
+
+  it('phrases an empty listing in the user language', async () => {
+    const retrieval = spyRetrieval();
+    const fast = fastModel('Ничего сохранённого нет.');
+
+    const reply = await respond(
+      {
+        source: 'telegram',
+        classifier: {
+          classify: () =>
+            Promise.resolve({ intent: 'recall-by-filter', slots: { orderBy: 'created_at' } }),
+        },
+        pipeline: pipeline(),
+        retrieval,
+        fast,
+      },
+      message('что у меня по Валенсии'),
+      [],
+    );
+
+    expect(reply).toEqual({ text: 'Ничего сохранённого нет.', keyboard: 'save' });
+    expect(fast.asked).toEqual(['что у меня по Валенсии']);
+    expect(retrieval.asks).toEqual([]);
   });
 
   it('clips a reply at the telegram limit', async () => {
@@ -465,6 +561,7 @@ describe('respond', () => {
         },
         pipeline: pipeline(),
         retrieval,
+        fast: quietFast,
       },
       message('long'),
       [],
@@ -547,6 +644,7 @@ describe('dispatch', () => {
         pipeline: ingestion,
         conversations,
         retrieval: spyRetrieval(),
+        fast: quietFast,
         now: () => now,
       },
       message('buy milk', '1'),

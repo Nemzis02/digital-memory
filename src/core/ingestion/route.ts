@@ -3,6 +3,7 @@ import { toTelegramHTML } from 'md-to-telegram';
 import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
+import type { ChatModel } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemoryPayload, MemorySource } from '../memory/payload.ts';
 import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
@@ -19,6 +20,12 @@ const TELEGRAM_TEXT_LIMIT = 4096;
 const FORGOTTEN = 'Forgotten.';
 
 const CHAT_REPLY = "Ask me about something you've saved.";
+
+const CHAT_SYSTEM =
+  'The user greeted you or reacted. Reply in one or two sentences, in the language of their message. Do not invent saved memories. Do not say that a search happened.';
+
+const MISS_SYSTEM =
+  "Nothing in the user's archive matches what they asked. Reply with one sentence in the language of their message saying nothing is saved about it. Do not invent a memory.";
 
 export interface Retrieval {
   ask(slots: IntentSlots): Promise<Answer>;
@@ -42,7 +49,30 @@ export interface RouteDeps {
   pipeline: IngestionPipeline;
   conversations: ConversationLog;
   retrieval: Retrieval;
+  fast: ChatModel;
   now?: () => Date;
+}
+
+async function phrase(
+  model: ChatModel,
+  system: string,
+  text: string,
+  fallback: string,
+): Promise<string> {
+  try {
+    const reply = (
+      await model.complete({
+        system,
+        turns: [{ role: 'user', parts: [{ type: 'text', text }] }],
+      })
+    ).trim();
+
+    return reply === '' ? fallback : reply;
+  } catch (error: unknown) {
+    log.error('failed to phrase a reply', { error });
+
+    return fallback;
+  }
 }
 
 function clip(text: string): string {
@@ -137,7 +167,7 @@ function slotsFor(intent: Intent, slots: IntentSlots, message: InboundMessage): 
 }
 
 export async function respond(
-  deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline' | 'retrieval'>,
+  deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline' | 'retrieval' | 'fast'>,
   message: InboundMessage,
   context: readonly ConversationTurn[],
   forced?: Intent,
@@ -161,29 +191,47 @@ export async function respond(
     case 'ask': {
       const answer = await deps.retrieval.ask(slots);
       const formatted = formatAnswer(answer);
+      const missed = formatted.text === NOTHING_FOUND;
+
+      const text = missed
+        ? await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND)
+        : formatted.text;
 
       return present({
-        text: formatted.text,
-        html: formatted.html,
+        text,
+        html: missed ? escapeHtml(text) : formatted.html,
         keyboard: 'save',
         ...(formatted.files === undefined ? {} : { files: formatted.files }),
       });
     }
 
     case 'chat':
-      return present({ text: CHAT_REPLY, keyboard: 'save' });
+      return present({
+        text: await phrase(deps.fast, CHAT_SYSTEM, turnBody(message), CHAT_REPLY),
+        keyboard: 'none',
+      });
 
     case 'recall-by-filter': {
       const memories = await deps.retrieval.recall(slots);
+      const listed = formatRecall(slots, memories);
 
-      return present({ text: formatRecall(slots, memories), keyboard: 'save' });
+      return present({
+        text:
+          listed === NOTHING_FOUND
+            ? await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND)
+            : listed,
+        keyboard: 'save',
+      });
     }
 
     case 'forget': {
       const parent = await deps.retrieval.resolveForget(slots);
 
       if (parent === undefined) {
-        return present({ text: NOTHING_FOUND, keyboard: 'save' });
+        return present({
+          text: await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND),
+          keyboard: 'save',
+        });
       }
 
       return present({

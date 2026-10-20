@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
 import type { ConversationTurn } from '../core/conversation/context.ts';
 import type { Retrieval } from '../core/ingestion/route.ts';
+import type { ChatModel } from '../core/llm/router.ts';
 import { memoryId } from '../core/memory/id.ts';
 import type { IngestionPipeline } from '../core/pipeline/graph.ts';
 import type { IngestionInput } from '../core/pipeline/state.ts';
@@ -160,6 +161,12 @@ function rejectingStorage(): ObjectStorage {
   };
 }
 
+const phrasingFast: ChatModel = {
+  id: 'fake-fast',
+  complete: () => Promise.resolve('Ничего сохранённого нет.'),
+  object: () => Promise.reject(new Error('unused')),
+};
+
 function harness(
   retrieval: Retrieval & { forgotten: UUID[] } = recordingRetrieval(),
   extras?: { classifier?: IntentClassifier; storage?: ObjectStorage; failHtml?: boolean },
@@ -177,6 +184,7 @@ function harness(
     pipeline: pipeline.pipeline,
     conversations,
     retrieval,
+    fast: phrasingFast,
     storage: extras?.storage ?? rejectingStorage(),
   });
 
@@ -552,7 +560,7 @@ describe('createBot', () => {
     const answered = replies()[1];
 
     expect(answered?.payload).toMatchObject({
-      text: NOTHING_FOUND,
+      text: 'Ничего сохранённого нет.',
       reply_parameters: { message_id: 10 },
     });
 

@@ -49,6 +49,7 @@ async function main(): Promise<void> {
     pipeline,
     conversations: createConversationLog(),
     retrieval,
+    fast: router.model('fast'),
     storage,
   });
 
