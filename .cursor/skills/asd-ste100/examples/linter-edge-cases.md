@@ -9,6 +9,6 @@ This file has intentional structural violations. Use it to test the linter.
 
 ## Fenced code
 
-~~~text
+```text
 - This line ends with and
-~~~
+```
