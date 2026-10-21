@@ -126,7 +126,8 @@ function userTurn(query: string, parents: readonly MemoryPayload[]): string {
   return `Question: ${query}\n\nMemories:\n${memories}`;
 }
 
-function cite(parents: readonly MemoryPayload[]): Citation[] {
+/** Cites parents with a link for a saved page or the stored file for a photo or document. */
+export function cite(parents: readonly MemoryPayload[]): Citation[] {
   return parents.map((parent) => {
     const cited = { id: parent.id, summary: parent.summary };
     const key = parent.r2_file_path;
@@ -150,7 +151,8 @@ function cite(parents: readonly MemoryPayload[]): Citation[] {
 
 const SOURCES = /^Sources:[ \t]*(.*)$/;
 
-function usedParents(
+/** Strips a trailing `Sources:` line and keeps the parents it names, in their given order. */
+export function usedParents(
   answer: string,
   parents: readonly MemoryPayload[],
 ): { answer: string; parents: MemoryPayload[] } {

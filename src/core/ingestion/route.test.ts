@@ -10,7 +10,8 @@ import type { IngestionInput } from '../pipeline/state.ts';
 import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
 import type { IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
 import type { InboundMessage } from './inbound.ts';
-import { dispatch, forgetResult, respond, savedReply, type Retrieval } from './route.ts';
+import { savedReply } from './reply.ts';
+import { dispatch, forgetResult, respond, type Retrieval } from './route.ts';
 
 function fastModel(reply: string): ChatModel & { asked: string[] } {
   const asked: string[] = [];

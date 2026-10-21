@@ -5,7 +5,8 @@ import type { CallbackQuery, Message, MaybeInaccessibleMessage, User } from 'gra
 import { z } from 'zod';
 import { logger } from '../../core/logging/logger.ts';
 import { dispatch, forgetResult } from '../../core/ingestion/route.ts';
-import type { RouteDeps, RouteReply } from '../../core/ingestion/route.ts';
+import type { RouteReply } from '../../core/ingestion/reply.ts';
+import type { RouteDeps } from '../../core/ingestion/route.ts';
 import type { InboundFile, InboundMessage } from '../../core/ingestion/inbound.ts';
 import { turnBody } from '../../core/ingestion/inbound.ts';
 import type { ObjectStorage } from '../../core/storage/object-storage.ts';

@@ -1,21 +1,18 @@
 import type { UUID } from 'node:crypto';
-import { toTelegramHTML } from 'md-to-telegram';
 import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
 import type { ChatModel } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemoryPayload, MemorySource } from '../memory/payload.ts';
-import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
-import { NOTHING_FOUND, type Answer, type CitationFile } from '../retrieval/answer.ts';
+import type { IngestionPipeline } from '../pipeline/graph.ts';
+import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
 import type { Intent, IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
+import { escapeHtml, formatAnswer, present, savedReply, type RouteReply } from './reply.ts';
 
 const log = logger.child({ module: 'ingestion/route' });
-
-// sendMessage rejects anything longer, and a synthesised answer can exceed it.
-const TELEGRAM_TEXT_LIMIT = 4096;
 
 const FORGOTTEN = 'Forgotten.';
 
@@ -33,14 +30,6 @@ export interface Retrieval {
   resolveForget(slots: IntentSlots): Promise<MemoryPayload | undefined>;
   forget(parentId: UUID): Promise<boolean>;
 }
-
-export interface ReplyFile extends CitationFile {
-  summary: string;
-}
-
-export type RouteReply =
-  | { text: string; html?: string; files?: ReplyFile[]; keyboard: 'undo' | 'none' }
-  | { text: string; html?: string; keyboard: 'forget'; parentId: UUID };
 
 export interface RouteDeps {
   source: MemorySource;
@@ -74,62 +63,8 @@ async function phrase(
   }
 }
 
-function clip(text: string): string {
-  return text.length <= TELEGRAM_TEXT_LIMIT ? text : text.slice(0, TELEGRAM_TEXT_LIMIT);
-}
-
-function present(reply: RouteReply): RouteReply {
-  const text = clip(reply.text);
-
-  return text === reply.text ? reply : { ...reply, text };
-}
-
-export function savedReply(result: IngestResult): string {
-  return [`Saved ${result.kind} · ${result.category}`, result.summary, result.tags.join(' ')]
-    .filter((line) => line !== '')
-    .join('\n');
-}
-
 function day(epoch: number): string {
   return new Date(epoch * 1000).toISOString().slice(0, 10);
-}
-
-function escapeHtml(value: string): string {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
-
-function formatAnswer(answer: Answer): { text: string; html: string; files?: ReplyFile[] } {
-  const lines = [answer.answer];
-  const htmlLines = [toTelegramHTML(answer.answer).text];
-  const files: ReplyFile[] = [];
-
-  for (const citation of answer.citations) {
-    const file = citation.file;
-
-    if (file !== undefined) {
-      files.push({ ...file, summary: citation.summary });
-      continue;
-    }
-
-    lines.push('', citation.summary);
-
-    const url = citation.url;
-
-    if (url === undefined) {
-      htmlLines.push('', escapeHtml(citation.summary));
-      continue;
-    }
-
-    const href = escapeHtml(url).replaceAll('"', '&quot;');
-
-    htmlLines.push('', `<a href="${href}">${escapeHtml(citation.summary)}</a>`);
-  }
-
-  return {
-    text: lines.join('\n'),
-    html: htmlLines.join('\n'),
-    ...(files.length === 0 ? {} : { files }),
-  };
 }
 
 function formatRecall(slots: IntentSlots, memories: readonly MemoryPayload[]): string {

@@ -11,7 +11,7 @@ Blocked on nothing. ADR 004 is the decision; this spec is the plan.
       module (e.g. `src/core/agent/schemas.ts`), not from `tools.ts`. The Phase 2 MCP server
       imports them so its `search_memory` input (ADR 002 decision 1) matches the bot's. MCP
       shares the schemas and core functions only; it registers its own tool handlers.
-- [ ] Task 4: `runTurn()` and reply composition, including the forget candidate and the
+- [x] Task 4: `runTurn()` and reply composition, including the forget candidate and the
       save confirmation. Scripted-model tests for every user story in the spec.
 - [ ] Task 5: Wire `dispatch()` to `runTurn()`. Captionless files bypass it. Undo re-runs with
       saving disabled.

@@ -3,7 +3,7 @@ import type { ReadableStream } from 'node:stream/web';
 import { InputFile, InputMediaBuilder, type Context, type InlineKeyboard } from 'grammy';
 import type { InputMediaDocument, InputMediaPhoto } from 'grammy/types';
 import { splitMessage } from 'md-to-telegram';
-import type { ReplyFile } from '../core/ingestion/route.ts';
+import type { ReplyFile } from '../core/ingestion/reply.ts';
 import { logger } from '../core/logging/logger.ts';
 import type { ObjectStorage, OpenedObject } from '../core/storage/object-storage.ts';
 

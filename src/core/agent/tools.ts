@@ -38,6 +38,8 @@ export interface TurnEffects {
 export interface AgentTurn {
   message: InboundMessage;
   effects: TurnEffects;
+  /** Every parent the model was shown this turn; only these can be cited. */
+  shown: Map<UUID, MemoryPayload>;
 }
 
 export interface AgentTools {
@@ -101,6 +103,12 @@ function filed(result: IngestResult) {
 export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentTools {
   const { store, embeddings } = deps;
 
+  function show(parents: readonly MemoryPayload[]): void {
+    for (const parent of parents) {
+      turn.shown.set(parent.id, parent);
+    }
+  }
+
   return {
     search_memory: {
       description:
@@ -108,6 +116,8 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
       input: searchMemoryInput,
       async execute(input) {
         const parents = await search({ store, embeddings }, toSlots(input));
+
+        show(parents);
 
         return parents.map(found);
       },
@@ -119,6 +129,8 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
       input: listMemoriesInput,
       async execute(input) {
         const memories = await recall(store, toSlots(input));
+
+        show(memories);
 
         return memories.map(listed);
       },
