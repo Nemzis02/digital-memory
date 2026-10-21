@@ -5,6 +5,7 @@
 ```text
 src/core/
 ├── agent/
+│   ├── schemas.ts       # Zod tool inputs, shared with the MCP server
 │   ├── tools.ts         # the four tools, each over an existing core function
 │   ├── prompt.ts        # system prompt and the memory content fence
 │   └── turn.ts          # runTurn(): one message in, one RouteReply out
@@ -34,12 +35,15 @@ have run. The bot answers with the existing generic failure.
 
 ## 2. Tools
 
-| Tool            | Input (Zod)                                          | Calls                       | Returns to the model                                     |
-| --------------- | ---------------------------------------------------- | --------------------------- | -------------------------------------------------------- |
-| `search_memory` | `query`, optional filters from today's `IntentSlots` | `search()` (split of `ask`) | parents: `id`, `summary`, dates, `has_file`, fenced text |
-| `list_memories` | filters, `order_by`, `direction`                     | `recall()`                  | parents: `id`, `summary`, dates                          |
-| `save_memory`   | optional `note`                                      | `pipeline.ingest()`         | `id`, `summary`, `category`, `kind`, `tags`              |
-| `forget_memory` | `query`, optional filters                            | `resolveForget()`           | one candidate `id` and `summary`, or none                |
+| Tool            | Input (Zod)                                          | Calls                       | Returns to the model                                                               |
+| --------------- | ---------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------- |
+| `search_memory` | `query`, optional filters from today's `IntentSlots` | `search()` (split of `ask`) | parents: `id`, `summary`, `type`, dates, `has_file`, `url` for a link, fenced text |
+| `list_memories` | filters, `order_by`, `direction`                     | `recall()`                  | parents: `id`, `summary`, `type`, dates                                            |
+| `save_memory`   | optional `note`                                      | `pipeline.ingest()`         | `id`, `summary`, `category`, `kind`, `tags`                                        |
+| `forget_memory` | `query`, optional filters                            | `resolveForget()`           | one candidate `id` and `summary`, or none                                          |
+
+`save_memory`'s `note`, when given, replaces the message text before ingestion, so a message
+that both saves and asks stores only the part worth keeping. The file and ids stay the same.
 
 `search()` is today's `ask()` up to and including the parent fetch. `ask()` keeps working on
 top of it until the classifier is deleted.

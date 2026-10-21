@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ChatTurn, LlmRouter } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
+import { epochDay, tagSlug } from '../memory/normalize.ts';
 import { MEMORY_CATEGORIES, MEMORY_KINDS, MEMORY_TYPES } from '../memory/payload.ts';
 import {
   INTENTS,
@@ -48,21 +49,12 @@ const classificationSchema = z.object({
 
 type RawClassification = z.infer<typeof classificationSchema>;
 
-function tag(raw: string): string {
-  const slug = raw
-    .toLowerCase()
-    .replaceAll(/[^\p{L}\p{N}_]+/gu, '_')
-    .replaceAll(/^_+|_+$/g, '');
-
-  return slug === '' ? '' : `#${slug}`;
-}
-
 function tags(raw: readonly string[], categories: readonly string[]): string[] {
   const blocked = new Set(categories.map((category) => `#${category}`));
   const seen = new Set<string>();
 
   for (const candidate of raw) {
-    const normalized = tag(candidate);
+    const normalized = tagSlug(candidate);
 
     if (normalized !== '' && !blocked.has(normalized)) {
       seen.add(normalized);
@@ -70,12 +62,6 @@ function tags(raw: readonly string[], categories: readonly string[]): string[] {
   }
 
   return [...seen].slice(0, MAX_TAGS);
-}
-
-function epochDay(date: string): number | undefined {
-  const parsed = Date.parse(`${date}T00:00:00Z`);
-
-  return Number.isNaN(parsed) ? undefined : Math.floor(parsed / 1000);
 }
 
 function text(value: string | undefined): string | undefined {

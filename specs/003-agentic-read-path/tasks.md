@@ -6,7 +6,7 @@ Blocked on nothing. ADR 004 is the decision; this spec is the plan.
       change; existing tests stay green.
 - [x] Task 2: `ChatModel.run()` in the router, over `generateText` with `tools` and
       `stopWhen`. Tests with the mock language model.
-- [ ] Task 3: The four tools in `src/core/agent/tools.ts`, with the memory content fence.
+- [x] Task 3: The four tools in `src/core/agent/tools.ts`, with the memory content fence.
       Export the Zod filter schemas for `search_memory` and `list_memories` from their own
       module (e.g. `src/core/agent/schemas.ts`), not from `tools.ts`. The Phase 2 MCP server
       imports them so its `search_memory` input (ADR 002 decision 1) matches the bot's. MCP
