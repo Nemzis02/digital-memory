@@ -15,7 +15,7 @@ Blocked on nothing. ADR 004 is the decision; this spec is the plan.
       save confirmation. Scripted-model tests for every user story in the spec.
 - [x] Task 5: Wire `dispatch()` to `runTurn()`. Captionless files bypass it. Undo re-runs with
       saving disabled.
-- [ ] Task 6: Delete `intent.ts`, `classifier.ts`, `ask()` and their tests. Task 5 already
+- [x] Task 6: Delete `intent.ts`, `classifier.ts`, `ask()` and their tests. Task 5 already
       removed the fast-model classification from `src/index.ts`.
 - [ ] Task 7: Live run through `npm run test:live` against real models, then update README
       features and mark ADR 002 decisions 3 and 4 superseded by ADR 004.

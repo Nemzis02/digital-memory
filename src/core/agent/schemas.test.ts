@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { MEMORY_CATEGORIES } from '../memory/payload.ts';
-import { listMemoriesInput, saveMemoryInput, searchMemoryInput, toSlots } from './schemas.ts';
+import { listMemoriesInput, saveMemoryInput, searchMemoryInput, toQueryInput } from './schemas.ts';
 
-describe('toSlots', () => {
+describe('toQueryInput', () => {
   it('maps dates to UTC midnight and keeps order and direction', () => {
     const input = listMemoriesInput.parse({
       kinds: ['event'],
@@ -15,7 +15,7 @@ describe('toSlots', () => {
       direction: 'asc',
     });
 
-    expect(toSlots(input)).toStrictEqual({
+    expect(toQueryInput(input)).toStrictEqual({
       kinds: ['event'],
       eventAfter: Date.UTC(2026, 9, 21) / 1000,
       eventBefore: Date.UTC(2026, 9, 28) / 1000,
@@ -36,7 +36,7 @@ describe('toSlots', () => {
       tags: [],
     });
 
-    expect(toSlots(input)).toStrictEqual({ query: 'tapas in Valencia' });
+    expect(toQueryInput(input)).toStrictEqual({ query: 'tapas in Valencia' });
   });
 
   it('slugs tags, drops one that repeats a category, and caps them at six', () => {
@@ -46,15 +46,15 @@ describe('toSlots', () => {
       tags: ['Finance', 'Bar Pepe', '#bar_pepe', '!!!', 'a', 'b', 'c', 'd', 'e', 'f'],
     });
 
-    expect(toSlots(input)).toStrictEqual({
+    expect(toQueryInput(input)).toStrictEqual({
       query: 'receipts',
       categories: ['finance'],
       tags: ['#bar_pepe', '#a', '#b', '#c', '#d', '#e'],
     });
   });
 
-  it('maps an empty listing to no slots', () => {
-    expect(toSlots(listMemoriesInput.parse({}))).toStrictEqual({});
+  it('maps an empty listing to an empty query', () => {
+    expect(toQueryInput(listMemoriesInput.parse({}))).toStrictEqual({});
   });
 });
 

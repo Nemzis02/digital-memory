@@ -13,7 +13,7 @@ import {
   listMemoriesInput,
   saveMemoryInput,
   searchMemoryInput,
-  toSlots,
+  toQueryInput,
   type ForgetMemoryInput,
   type ListMemoriesInput,
   type SaveMemoryInput,
@@ -115,7 +115,7 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         'Search what saved memories say. Use for any question answered from their content. Returns the matching memories, best first, each with its text inside a <memory> block.',
       input: searchMemoryInput,
       async execute(input) {
-        const parents = await search({ store, embeddings }, toSlots(input));
+        const parents = await search({ store, embeddings }, toQueryInput(input));
 
         show(parents);
 
@@ -128,7 +128,7 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         'List memories by metadata alone, with no text search: what is coming up, receipts from a month, everything tagged #x. Returns id, summary and dates.',
       input: listMemoriesInput,
       async execute(input) {
-        const memories = await recall(store, toSlots(input));
+        const memories = await recall(store, toQueryInput(input));
 
         show(memories);
 
@@ -165,7 +165,7 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         'Find the one memory the user wants deleted. It deletes nothing: the user confirms with a button. Returns the candidate, or null when nothing matches.',
       input: forgetMemoryInput,
       async execute(input) {
-        const parent = await resolveForget({ store, embeddings }, toSlots(input));
+        const parent = await resolveForget({ store, embeddings }, toQueryInput(input));
 
         if (parent === undefined) {
           return null;

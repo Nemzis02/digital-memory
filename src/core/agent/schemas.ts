@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { epochDay, tagSlug } from '../memory/normalize.ts';
 import { MEMORY_CATEGORIES, MEMORY_KINDS, MEMORY_TYPES } from '../memory/payload.ts';
-import type { IntentSlots } from '../retrieval/intent.ts';
+import type { QueryInput } from '../retrieval/query.ts';
 
 const MAX_TAGS = 6;
 
@@ -87,7 +87,7 @@ export type ListMemoriesInput = z.infer<typeof listMemoriesInput>;
 export type ForgetMemoryInput = z.infer<typeof forgetMemoryInput>;
 export type SaveMemoryInput = z.infer<typeof saveMemoryInput>;
 
-type SlotInput = MemoryFilterInput &
+type ToolQueryInput = MemoryFilterInput &
   Partial<Pick<ListMemoriesInput, 'orderBy' | 'direction'>> & {
     query?: string | undefined;
   };
@@ -121,8 +121,8 @@ function tags(raw: readonly string[], categories: readonly string[]): string[] {
   return [...seen].slice(0, MAX_TAGS);
 }
 
-/** Maps tool input onto the slots `search()`, `recall()` and `resolveForget()` take. */
-export function toSlots(input: SlotInput): IntentSlots {
+/** Maps tool input onto the query `search()`, `recall()` and `resolveForget()` take. */
+export function toQueryInput(input: ToolQueryInput): QueryInput {
   const query = text(input.query);
   const categories = present(input.categories);
   const kinds = present(input.kinds);
