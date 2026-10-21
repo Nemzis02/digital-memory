@@ -5,7 +5,7 @@ import type { MemoryPayload } from '../memory/payload.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, SearchHit, SearchQuery, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND } from './answer.ts';
-import { ask, forget, recall, resolveForget, type AskDeps } from './query.ts';
+import { ask, forget, recall, resolveForget, search, type AskDeps } from './query.ts';
 
 const parent: MemoryPayload = {
   id: '3f0c6f0e-2d1a-4f6b-9f1e-8c4b2a7d5e10',
@@ -264,6 +264,51 @@ function answering(options?: {
     requests,
   };
 }
+
+describe('search', () => {
+  it('returns each parent once in hit order without calling the model', async () => {
+    const box = answering({
+      hits: [
+        hit(child('11111111-1111-4111-8111-111111111111', paella.id, 'rice fragment'), 0.9),
+        hit(child('22222222-2222-4222-8222-222222222222', dentist.id, 'tuesday fragment'), 0.5),
+        hit(child('33333333-3333-4333-8333-333333333333', dentist.id, 'ten o clock fragment'), 0.2),
+      ],
+      parents: [dentist, paella],
+    });
+
+    await expect(
+      search(box.deps, { query: '  dentist  ', kinds: ['event'] }),
+    ).resolves.toStrictEqual([paella, dentist]);
+
+    expect(box.embeds).toStrictEqual([{ text: 'dentist', task: 'query' }]);
+
+    expect(box.searches).toStrictEqual([
+      { dense: DENSE, sparse: SPARSE, limit: 10, filter: { isChild: true, kinds: ['event'] } },
+    ]);
+
+    expect(box.fetches).toStrictEqual([[paella.id, dentist.id]]);
+    expect(box.requests).toStrictEqual([]);
+  });
+
+  it('returns nothing without fetching when nothing matches', async () => {
+    const box = answering();
+
+    await expect(search(box.deps, { query: 'where are the keys' })).resolves.toStrictEqual([]);
+
+    expect(box.fetches).toStrictEqual([]);
+  });
+
+  it('rejects a blank query before embedding', async () => {
+    const box = answering();
+
+    await expect(search(box.deps, { query: '   ' })).rejects.toThrow(
+      new TypeError('search() needs a query'),
+    );
+
+    expect(box.embeds).toStrictEqual([]);
+    expect(box.searches).toStrictEqual([]);
+  });
+});
 
 describe('ask', () => {
   it('searches children, reads each parent once, and cites the file', async () => {

@@ -47,13 +47,16 @@ export async function recall(store: VectorStore, slots: IntentSlots): Promise<Me
   return store.list(query);
 }
 
-export interface AskDeps {
+export interface SearchDeps {
   store: VectorStore;
   embeddings: Embeddings;
+}
+
+export interface AskDeps extends SearchDeps {
   model: ChatModel;
 }
 
-function requireQuery(slots: IntentSlots, fn: 'ask' | 'forget'): string {
+function requireQuery(slots: IntentSlots, fn: 'ask' | 'forget' | 'search'): string {
   const query = slots.query?.trim();
 
   if (query === undefined || query === '') {
@@ -92,6 +95,29 @@ function inHitOrder(ids: readonly UUID[], payloads: readonly MemoryPayload[]): M
   }
 
   return ordered;
+}
+
+/** Hybrid search over children, returning their parents in hit order. */
+export async function search(deps: SearchDeps, slots: IntentSlots): Promise<MemoryPayload[]> {
+  const query = requireQuery(slots, 'search');
+  const dense = await deps.embeddings.embed(query, 'query');
+  const sparse = deps.embeddings.embedSparse(query);
+
+  const hits = await deps.store.search({
+    dense,
+    sparse,
+    limit: SEARCH_LIMIT,
+    filter: memoryFilter(slots, true),
+  });
+
+  // The child is what matched; the parent is the text the model should read.
+  const ids = parentIds(hits);
+
+  if (ids.length === 0) {
+    return [];
+  }
+
+  return inHitOrder(ids, await deps.store.fetch(ids));
 }
 
 function userTurn(query: string, parents: readonly MemoryPayload[]): string {
@@ -174,24 +200,7 @@ function sentenceAfterMiss(answer: string): string | undefined {
 
 export async function ask(deps: AskDeps, slots: IntentSlots): Promise<Answer> {
   const query = requireQuery(slots, 'ask');
-  const dense = await deps.embeddings.embed(query, 'query');
-  const sparse = deps.embeddings.embedSparse(query);
-
-  const hits = await deps.store.search({
-    dense,
-    sparse,
-    limit: SEARCH_LIMIT,
-    filter: memoryFilter(slots, true),
-  });
-
-  // The child is what matched; the parent is the text the model should read.
-  const ids = parentIds(hits);
-
-  if (ids.length === 0) {
-    return { answer: NOTHING_FOUND, citations: [] };
-  }
-
-  const parents = inHitOrder(ids, await deps.store.fetch(ids));
+  const parents = await search(deps, slots);
 
   if (parents.length === 0) {
     return { answer: NOTHING_FOUND, citations: [] };

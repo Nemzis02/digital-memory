@@ -2,11 +2,15 @@
 
 Blocked on nothing. ADR 004 is the decision; this spec is the plan.
 
-- [ ] Task 1: Split `search()` out of `ask()` in `query.ts`. `ask()` calls it. No behaviour
+- [x] Task 1: Split `search()` out of `ask()` in `query.ts`. `ask()` calls it. No behaviour
       change; existing tests stay green.
 - [ ] Task 2: `ChatModel.run()` in the router, over `generateText` with `tools` and
       `stopWhen`. Tests with the mock language model.
 - [ ] Task 3: The four tools in `src/core/agent/tools.ts`, with the memory content fence.
+      Export the Zod filter schemas for `search_memory` and `list_memories` from their own
+      module (e.g. `src/core/agent/schemas.ts`), not from `tools.ts`. The Phase 2 MCP server
+      imports them so its `search_memory` input (ADR 002 decision 1) matches the bot's. MCP
+      shares the schemas and core functions only; it registers its own tool handlers.
 - [ ] Task 4: `runTurn()` and reply composition, including the forget candidate and the
       save confirmation. Scripted-model tests for every user story in the spec.
 - [ ] Task 5: Wire `dispatch()` to `runTurn()`. Captionless files bypass it. Undo re-runs with
