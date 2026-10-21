@@ -60,11 +60,11 @@ export interface SearchDeps {
   embeddings: Embeddings;
 }
 
-function requireQuery(input: QueryInput, fn: 'forget' | 'search'): string {
+function requireQuery(input: QueryInput): string {
   const query = input.query?.trim();
 
   if (query === undefined || query === '') {
-    throw new TypeError(`${fn}() needs a query`);
+    throw new TypeError('search() needs a query');
   }
 
   return query;
@@ -103,7 +103,7 @@ function inHitOrder(ids: readonly UUID[], payloads: readonly MemoryPayload[]): M
 
 /** Hybrid search over children, returning their parents in hit order. */
 export async function search(deps: SearchDeps, input: QueryInput): Promise<MemoryPayload[]> {
-  const query = requireQuery(input, 'search');
+  const query = requireQuery(input);
   const dense = await deps.embeddings.embed(query, 'query');
   const sparse = deps.embeddings.embedSparse(query);
 
@@ -181,48 +181,6 @@ export function usedParents(
     answer: body,
     parents: parents.filter((parent) => named.has(parent.id)),
   };
-}
-
-export interface ResolveForgetDeps {
-  store: VectorStore;
-  embeddings: Embeddings;
-}
-
-export async function resolveForget(
-  deps: ResolveForgetDeps,
-  input: QueryInput,
-): Promise<MemoryPayload | undefined> {
-  const query = requireQuery(input, 'forget');
-  const dense = await deps.embeddings.embed(query, 'query');
-  const sparse = deps.embeddings.embedSparse(query);
-
-  const hits = await deps.store.search({
-    dense,
-    sparse,
-    limit: SEARCH_LIMIT,
-    filter: memoryFilter(input, true),
-  });
-
-  const ranked = [...hits].sort((left, right) => right.score - left.score);
-  const seen = new Set<UUID>();
-
-  for (const hit of ranked) {
-    const id = hit.payload.chunking.parent_id;
-
-    if (id === undefined || seen.has(id)) {
-      continue;
-    }
-
-    seen.add(id);
-
-    const [parent] = await deps.store.fetch([id]);
-
-    if (parent !== undefined) {
-      return parent;
-    }
-  }
-
-  return undefined;
 }
 
 export interface ForgetDeps {

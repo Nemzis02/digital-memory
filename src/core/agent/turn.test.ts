@@ -255,7 +255,8 @@ describe('runTurn', () => {
   it('proposes the one memory to forget behind the Forget button and deletes nothing', async () => {
     const box = harness(
       [
-        { call: 'forget_memory', input: { query: 'the dentist card' } },
+        { call: 'search_memory', input: { query: 'the dentist card' } },
+        { call: 'forget_memory', input: { id: dentist.id } },
         { text: 'Shall I forget the appointment card?' },
       ],
       { hits: [TAPAS_HIT, DENTIST_HIT] },
@@ -274,7 +275,8 @@ describe('runTurn', () => {
     const box = harness(
       [
         { call: 'save_memory', input: { note: 'the tapas bar on Calle Ruzafa is great' } },
-        { call: 'forget_memory', input: { query: 'the dentist card' } },
+        { call: 'search_memory', input: { query: 'the dentist card' } },
+        { call: 'forget_memory', input: { id: dentist.id } },
         { text: 'Saved, and shall I forget the card?' },
       ],
       { hits: [DENTIST_HIT] },
@@ -292,7 +294,7 @@ describe('runTurn', () => {
 
   it('lets the model say so when nothing matches a forget', async () => {
     const box = harness([
-      { call: 'forget_memory', input: { query: 'стоматолог' } },
+      { call: 'search_memory', input: { query: 'стоматолог' } },
       { text: 'Ничего про стоматолога нет.' },
     ]);
 
@@ -300,6 +302,19 @@ describe('runTurn', () => {
 
     expect(reply).toMatchObject({ text: 'Ничего про стоматолога нет.', keyboard: 'none' });
     expect(reply).not.toHaveProperty('files');
+    expect(box.removed).toStrictEqual([]);
+  });
+
+  it('offers no Forget button for an id the model was not shown', async () => {
+    const box = harness([
+      { call: 'forget_memory', input: { id: dentist.id } },
+      { text: 'I could not find it.' },
+    ]);
+
+    const reply = await box.turn({ ...MESSAGE, text: 'forget the dentist card' });
+
+    expect(reply).toMatchObject({ text: 'I could not find it.', keyboard: 'none' });
+    expect(box.model.results[0]?.calls[0]).toHaveProperty('error');
     expect(box.removed).toStrictEqual([]);
   });
 

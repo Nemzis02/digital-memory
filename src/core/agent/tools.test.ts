@@ -179,32 +179,33 @@ describe('save_memory', () => {
 });
 
 describe('forget_memory', () => {
-  it('proposes the best match and deletes nothing', async () => {
-    const box = harness({
-      hits: [
-        hit(child('44444444-4444-4444-8444-444444444444', tapas), 0.3),
-        hit(child('33333333-3333-4333-8333-333333333333', dentist), 0.9),
-      ],
-      parents: [tapas, dentist],
+  it('marks a memory shown this turn without searching or deleting', async () => {
+    const box = harness();
+
+    box.shown.set(dentist.id, dentist);
+
+    await expect(box.tools.forget_memory.execute({ id: dentist.id })).resolves.toStrictEqual({
+      id: dentist.id,
+      summary: 'Appointment card',
     });
-
-    await expect(
-      box.tools.forget_memory.execute({ query: 'the dentist card', categories: ['health'] }),
-    ).resolves.toStrictEqual({ id: dentist.id, summary: 'Appointment card' });
-
-    expect(box.searches[0]?.filter).toStrictEqual({ isChild: true, categories: ['health'] });
 
     expect(box.effects).toStrictEqual({
       forgetCandidate: { id: dentist.id, summary: 'Appointment card' },
     });
 
+    expect(box.embeds).toStrictEqual([]);
+    expect(box.searches).toStrictEqual([]);
     expect(box.removed).toStrictEqual([]);
   });
 
-  it('returns null and records nothing when nothing matches', async () => {
+  it('rejects an id the model was not shown this turn', async () => {
     const box = harness();
 
-    await expect(box.tools.forget_memory.execute({ query: 'the dentist' })).resolves.toBeNull();
+    box.shown.set(dentist.id, dentist);
+
+    await expect(box.tools.forget_memory.execute({ id: tapas.id })).rejects.toThrow(
+      'forget_memory needs the id of a memory shown in this turn.',
+    );
 
     expect(box.effects).toStrictEqual({});
     expect(box.removed).toStrictEqual([]);

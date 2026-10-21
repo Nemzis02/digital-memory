@@ -17,5 +17,7 @@ Blocked on nothing. ADR 004 is the decision; this spec is the plan.
       saving disabled.
 - [x] Task 6: Delete `intent.ts`, `classifier.ts`, `ask()` and their tests. Task 5 already
       removed the fast-model classification from `src/index.ts`.
-- [ ] Task 7: Live run through `npm run test:live` against real models, then update README
+- [x] Task 7: Live run through `npm run test:live` against real models, then update README
       features and mark ADR 002 decisions 3 and 4 superseded by ADR 004.
+- [x] Task 8: `forget_memory` takes the id of a memory shown this turn. Delete `resolveForget()`.
+      The Task 7 live run showed that a fused-rank top hit can be a junk memory.

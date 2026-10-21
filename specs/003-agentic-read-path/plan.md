@@ -12,7 +12,7 @@ src/core/
 ├── llm/
 │   └── router.ts        # ChatModel gains run(request, tools, maxSteps)
 ├── retrieval/
-│   └── query.ts         # search() split out of ask(); recall, resolveForget unchanged
+│   └── query.ts         # search() split out of ask(), recall unchanged, resolveForget deleted
 └── ingestion/
     ├── reply.ts         # RouteReply and its formatting, shared by route.ts and turn.ts
     └── route.ts         # dispatch() calls runTurn() instead of classify + respond
@@ -42,7 +42,7 @@ that turn: then `runTurn()` returns the saved confirmation with Undo, since the 
 | `search_memory` | `query`, optional filters from today's `IntentSlots` | `search()` (split of `ask`) | parents: `id`, `summary`, `type`, dates, `has_file`, `url` for a link, fenced text |
 | `list_memories` | filters, `order_by`, `direction`                     | `recall()`                  | parents: `id`, `summary`, `type`, dates                                            |
 | `save_memory`   | optional `note`                                      | `pipeline.ingest()`         | `id`, `summary`, `category`, `kind`, `tags`                                        |
-| `forget_memory` | `query`, optional filters                            | `resolveForget()`           | one candidate `id` and `summary`, or none                                          |
+| `forget_memory` | `id` of a memory shown this turn                     | nothing                     | the candidate `id` and `summary`, or an error for an id not shown                  |
 
 `save_memory`'s `note`, when given, replaces the message text before ingestion, so a message
 that both saves and asks stores only the part worth keeping. The file and ids stay the same.

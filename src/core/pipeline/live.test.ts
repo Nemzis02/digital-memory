@@ -165,7 +165,7 @@ describe.skipIf(!live)('live ingestion', () => {
       const [parent] = await qdrantStore().fetch([result.id]);
 
       expect(parent?.source_url).toBe(url);
-      expect(parent?.original_text).toContain('illustrative examples');
+      expect(parent?.original_text).toContain('documentation examples');
     },
     TIMEOUT,
   );

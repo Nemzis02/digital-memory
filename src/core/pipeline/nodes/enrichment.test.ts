@@ -88,6 +88,14 @@ describe('createEnrichmentNode', () => {
     expect(enrichment.tags).toHaveLength(6);
   });
 
+  it('drops an overlong tag instead of failing the save', async () => {
+    const { enrichment } = await enrich({
+      tags: ['#locksmith', `#${'very_long_tag_'.repeat(4)}`],
+    });
+
+    expect(enrichment.tags).toEqual(['#locksmith']);
+  });
+
   it('turns an event date into midnight UTC and leaves it out otherwise', async () => {
     const dated = await enrich({ eventAt: '2026-11-03' });
 

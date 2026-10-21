@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { MEMORY_CATEGORIES } from '../memory/payload.ts';
-import { listMemoriesInput, saveMemoryInput, searchMemoryInput, toQueryInput } from './schemas.ts';
+import {
+  forgetMemoryInput,
+  listMemoriesInput,
+  saveMemoryInput,
+  searchMemoryInput,
+  toQueryInput,
+} from './schemas.ts';
 
 describe('toQueryInput', () => {
   it('maps dates to UTC midnight and keeps order and direction', () => {
@@ -59,7 +65,7 @@ describe('toQueryInput', () => {
 });
 
 describe('input schemas', () => {
-  it('reject a category outside the archive, a loose date, and a blank query', () => {
+  it('reject a category outside the archive, a loose date, a blank query, and a forget without an id', () => {
     expect(searchMemoryInput.safeParse({ query: 'x', categories: ['astrology'] }).success).toBe(
       false,
     );
@@ -67,6 +73,8 @@ describe('input schemas', () => {
     expect(listMemoriesInput.safeParse({ eventAfter: 'next tuesday' }).success).toBe(false);
     expect(searchMemoryInput.safeParse({ query: '   ' }).success).toBe(false);
     expect(saveMemoryInput.safeParse({ note: '  ' }).success).toBe(false);
+    expect(forgetMemoryInput.safeParse({ id: 'the dentist card' }).success).toBe(false);
+    expect(forgetMemoryInput.safeParse({ query: 'dentist' }).success).toBe(false);
   });
 
   it('show the model a query it must give and dates as strings', () => {

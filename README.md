@@ -11,7 +11,8 @@
 - **Private Cloud Storage:** Secure asset storage in **Cloudflare R2** with ephemeral Pre-signed URLs (no public links).
 - **Durable State:** **PostgreSQL** via **Drizzle ORM** for OAuth2 sessions, tokens and user metadata, and as the LangGraph checkpoint store.
 - **IDE Access via MCP:** Native connection to Cursor/Windsurf via Server-Sent Events (SSE), protected by **Telegram OAuth2 SSO**.
-- **Agentic Workflow:** Powered by **LangGraph** for multi-step OCR and web scraping.
+- **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)).
+- **Ingestion Graph:** Powered by **LangGraph** for multi-step OCR and web scraping.
 
 ---
 
@@ -33,9 +34,10 @@ Copy `.env.example` to `.env` and fill it in. `POSTGRES_PASSWORD` and `QDRANT_AP
 choose — `docker-compose.yml` configures the containers to demand them. The credentials that come
 from elsewhere are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_ID` (BotFather), `LLM_FAST_API_KEY`
 (fast model and embeddings), and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` /
-`R2_BUCKET_NAME` (Cloudflare, on a bucket with public access left disabled). `LLM_STRONG_API_KEY` is
-only read once a question is asked, and `PUBLIC_URL` with `TELEGRAM_WEBHOOK_SECRET` only when
-serving a webhook —
+`R2_BUCKET_NAME` (Cloudflare, on a bucket with public access left disabled). The strong model
+answers every text message, so the process starts without `LLM_STRONG_API_KEY` but answers no
+message until it is set.
+`PUBLIC_URL` with `TELEGRAM_WEBHOOK_SECRET` are only needed when serving a webhook —
 leaving both unset selects long polling, which needs no public address. `npm run dev` starts `src/index.ts`, and that process binds `PORT` either way: Telegram, and later MCP and OAuth, share one HTTP server.
 
 ```bash
@@ -51,6 +53,7 @@ idempotently. `npm test` needs no services and no keys.
 and Qdrant, cleaning up after itself. Set `INGEST_PHOTO`, `INGEST_VOICE` or `INGEST_DOCUMENT` to a
 file path to include that medium; each case is skipped without one. Use files saved out of a real
 Telegram chat, since Telegram re-encodes what it forwards.
+The agent cases also need `LLM_STRONG_API_KEY`.
 
 ---
 
@@ -66,6 +69,7 @@ digital-memory/
 │   └── adr/                   # Architecture Decision Records (ADRs)
 ├── specs/                     # Feature Specifications (SDD workflow)
 │   ├── 001-tg-ingestion/      # Phase 1: Ingestion Pipeline
-│   └── 002-retrieval/         # Phase 1: Read path (ask, recall, forget)
+│   ├── 002-retrieval/         # Phase 1: Read path (search, recall, forget)
+│   └── 003-agentic-read-path/ # Phase 1: One tool-calling turn per message
 └── src/                       # Core application source code
 ```

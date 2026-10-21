@@ -5,7 +5,7 @@ import type { ToolSpec } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemoryPayload, MemorySource, MemoryType } from '../memory/payload.ts';
 import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
-import { recall, resolveForget, search } from '../retrieval/query.ts';
+import { recall, search } from '../retrieval/query.ts';
 import type { VectorStore } from '../vector/vector-store.ts';
 import { fenceMemory } from './prompt.ts';
 import {
@@ -21,6 +21,9 @@ import {
 } from './schemas.ts';
 
 const log = logger.child({ module: 'agent/tools' });
+
+const NOT_SHOWN =
+  'forget_memory needs the id of a memory shown in this turn. Call search_memory or list_memories first.';
 
 export interface AgentToolDeps {
   store: VectorStore;
@@ -162,13 +165,14 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
 
     forget_memory: {
       description:
-        'Find the one memory the user wants deleted. It deletes nothing: the user confirms with a button. Returns the candidate, or null when nothing matches.',
+        'Mark the one memory the user wants deleted. Give the id of a memory that search_memory or list_memories returned in this turn. It deletes nothing. The user confirms with a button.',
       input: forgetMemoryInput,
-      async execute(input) {
-        const parent = await resolveForget({ store, embeddings }, toQueryInput(input));
+      execute(input) {
+        // Not a search: a fused-rank top hit carries no relevance, so the model picks what it read.
+        const parent = [...turn.shown.values()].find((memory) => memory.id === input.id);
 
         if (parent === undefined) {
-          return null;
+          return Promise.reject(new Error(NOT_SHOWN));
         }
 
         const candidate = { id: parent.id, summary: parent.summary };
@@ -176,7 +180,7 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         turn.effects.forgetCandidate = candidate;
         log.info('forget candidate', { id: parent.id });
 
-        return candidate;
+        return Promise.resolve(candidate);
       },
     },
   };

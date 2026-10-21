@@ -54,7 +54,7 @@ const envSchema = z
     // Hard ceiling, not a tunable: R2 objects must never be reachable for longer.
     R2_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().max(900).default(900),
 
-    // Fast model and embeddings. The strong key is absent until a question is asked.
+    // Fast model and embeddings. The strong key is optional at startup, but every text message needs it.
     LLM_FAST_API_KEY: nonEmpty('LLM_FAST_API_KEY'),
     LLM_STRONG_API_KEY: nonEmpty('LLM_STRONG_API_KEY').optional(),
   })

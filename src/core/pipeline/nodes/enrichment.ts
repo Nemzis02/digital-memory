@@ -10,6 +10,7 @@ const log = logger.child({ module: 'pipeline/enrichment' });
 
 const MAX_PROMPT_CHARS = 8_000;
 const MAX_TAGS = 6;
+const MAX_TAG_CHARS = 40;
 
 const SYSTEM = `You file items into a personal archive. Classify what you are given and return only the fields of the schema.
 
@@ -26,7 +27,7 @@ const enrichmentSchema = z.object({
   category: z.enum(MEMORY_CATEGORIES),
   kind: z.enum(MEMORY_KINDS),
   location: z.string().max(120).optional(),
-  tags: z.array(z.string().max(40)),
+  tags: z.array(z.string()),
   eventAt: z.iso.date().optional(),
 });
 
@@ -36,7 +37,7 @@ function tags(raw: string[], category: string): string[] {
   for (const candidate of raw) {
     const normalized = tagSlug(candidate);
 
-    if (normalized !== '' && normalized !== `#${category}`) {
+    if (normalized !== '' && normalized.length <= MAX_TAG_CHARS && normalized !== `#${category}`) {
       seen.add(normalized);
     }
   }

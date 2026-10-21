@@ -67,7 +67,11 @@ export const listMemoriesInput = memoryFilterSchema.extend({
     .describe('asc for what comes next, desc for the latest.'),
 });
 
-export const forgetMemoryInput = searchMemoryInput;
+export const forgetMemoryInput = z.object({
+  id: z
+    .uuid()
+    .describe('The id of one memory that search_memory or list_memories returned in this turn.'),
+});
 
 export const saveMemoryInput = z.object({
   note: z
@@ -121,7 +125,7 @@ function tags(raw: readonly string[], categories: readonly string[]): string[] {
   return [...seen].slice(0, MAX_TAGS);
 }
 
-/** Maps tool input onto the query `search()`, `recall()` and `resolveForget()` take. */
+/** Maps tool input onto the query `search()` and `recall()` take. */
 export function toQueryInput(input: ToolQueryInput): QueryInput {
   const query = text(input.query);
   const categories = present(input.categories);

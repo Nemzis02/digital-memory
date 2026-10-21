@@ -27,6 +27,11 @@ what to call, sees the result, and answers or asks back.
    - `save_memory`: runs the spec 001 ingestion pipeline on the current inbound message. The
      reply is today's saved confirmation with its Undo button.
    - `forget_memory`: today's `resolveForget`. It returns one candidate and never deletes.
+     _Amended 2026-10-21:_ it takes the id of a memory shown in the same turn, not a query.
+     `resolveForget` no longer exists. One search picked its top hit by the reciprocal rank fusion
+     score. That score carries rank and no relevance: 1.0 is first in both branches, 0.5 is first
+     in one. A filler word such as "note" let BM25 rank a short junk memory first, so no score floor
+     could separate it from the real match. The model reads the hits and picks one, or asks.
 3. **What stays outside the model.**
    - A photo, document or voice note with no caption is saved with no model turn, since there is
      nothing to decide.

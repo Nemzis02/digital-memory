@@ -4,15 +4,7 @@ import type { MemoryPayload } from '../memory/payload.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, SearchHit, SearchQuery, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND } from './answer.ts';
-import {
-  cite,
-  forget,
-  recall,
-  resolveForget,
-  search,
-  usedParents,
-  type SearchDeps,
-} from './query.ts';
+import { cite, forget, recall, search, usedParents, type SearchDeps } from './query.ts';
 
 const parent: MemoryPayload = {
   id: '3f0c6f0e-2d1a-4f6b-9f1e-8c4b2a7d5e10',
@@ -372,45 +364,21 @@ describe('usedParents', () => {
 });
 
 function forgetting(options?: {
-  hits?: readonly SearchHit[];
   fetched?: readonly MemoryPayload[];
   children?: readonly MemoryPayload[];
 }): {
-  deps: { store: VectorStore; embeddings: Embeddings; storage: ObjectStorage };
-  embeds: { text: string; task: EmbedTask }[];
-  sparses: string[];
-  searches: SearchQuery[];
+  deps: { store: VectorStore; storage: ObjectStorage };
   fetches: MemoryPayload['id'][][];
   lists: ListQuery[];
   removed: MemoryPayload['id'][][];
   objectRemovals: string[];
 } {
-  const hits = options?.hits ?? [];
   const fetched = options?.fetched ?? [];
   const children = options?.children ?? [];
-  const embeds: { text: string; task: EmbedTask }[] = [];
-  const sparses: string[] = [];
-  const searches: SearchQuery[] = [];
   const fetches: MemoryPayload['id'][][] = [];
   const lists: ListQuery[] = [];
   const removed: MemoryPayload['id'][][] = [];
   const objectRemovals: string[] = [];
-
-  const embeddings: Embeddings = {
-    embed(text, task) {
-      embeds.push({ text, task });
-
-      return Promise.resolve(DENSE);
-    },
-    embedMany() {
-      return Promise.reject(new Error('forget embeds one query'));
-    },
-    embedSparse(text) {
-      sparses.push(text);
-
-      return SPARSE;
-    },
-  };
 
   const storage: ObjectStorage = {
     upload() {
@@ -439,10 +407,8 @@ function forgetting(options?: {
     upsert() {
       return Promise.resolve();
     },
-    search(query) {
-      searches.push(query);
-
-      return Promise.resolve([...hits]);
+    search() {
+      return Promise.reject(new Error('forget removes by id and never searches'));
     },
     list(query) {
       lists.push(query);
@@ -463,125 +429,12 @@ function forgetting(options?: {
     },
   };
 
-  return {
-    deps: { store, embeddings, storage },
-    embeds,
-    sparses,
-    searches,
-    fetches,
-    lists,
-    removed,
-    objectRemovals,
-  };
+  return { deps: { store, storage }, fetches, lists, removed, objectRemovals };
 }
 
 const rice = child('11111111-1111-4111-8111-111111111111', paella.id, 'rice fragment');
 const tuesday = child('22222222-2222-4222-8222-222222222222', dentist.id, 'tuesday fragment');
 const ten = child('33333333-3333-4333-8333-333333333333', dentist.id, 'ten o clock fragment');
-
-describe('resolveForget', () => {
-  it('searches children and returns only the highest-scoring parent', async () => {
-    const box = forgetting({
-      // Listed ahead of the higher score, so array order would pick the wrong parent.
-      hits: [hit(rice, 0.4), hit(tuesday, 0.9), hit(ten, 0.7)],
-      fetched: [dentist, paella],
-    });
-
-    await expect(
-      resolveForget(box.deps, {
-        query: '  forget the dentist  ',
-        categories: ['health'],
-        kinds: ['event'],
-        tags: ['#dentist'],
-        types: ['document'],
-        location: 'Valencia',
-        eventAfter: 1_772_000_000,
-        eventBefore: 1_772_500_000,
-        createdAfter: 1_700_000_000,
-        createdBefore: 1_800_000_000,
-        orderBy: 'event_at',
-        direction: 'asc',
-      }),
-    ).resolves.toBe(dentist);
-
-    expect(box.embeds).toStrictEqual([{ text: 'forget the dentist', task: 'query' }]);
-    expect(box.sparses).toStrictEqual(['forget the dentist']);
-
-    expect(box.searches).toStrictEqual([
-      {
-        dense: DENSE,
-        sparse: SPARSE,
-        limit: 10,
-        filter: {
-          isChild: true,
-          categories: ['health'],
-          kinds: ['event'],
-          tags: ['#dentist'],
-          types: ['document'],
-          location: 'Valencia',
-          eventAfter: 1_772_000_000,
-          eventBefore: 1_772_500_000,
-          createdAfter: 1_700_000_000,
-          createdBefore: 1_800_000_000,
-        },
-      },
-    ]);
-
-    expect(box.fetches).toStrictEqual([[dentist.id]]);
-    expect(box.lists).toStrictEqual([]);
-    expect(box.removed).toStrictEqual([]);
-    expect(box.objectRemovals).toStrictEqual([]);
-  });
-
-  it('returns nothing when nothing matches', async () => {
-    const box = forgetting();
-
-    await expect(resolveForget(box.deps, { query: 'the dentist' })).resolves.toBeUndefined();
-
-    expect(box.fetches).toStrictEqual([]);
-    expect(box.lists).toStrictEqual([]);
-    expect(box.removed).toStrictEqual([]);
-    expect(box.objectRemovals).toStrictEqual([]);
-  });
-
-  it('returns nothing when the hits have no parent left', async () => {
-    const box = forgetting({ hits: [hit(tuesday, 0.9), hit(rice, 0.4)] });
-
-    await expect(resolveForget(box.deps, { query: 'the dentist' })).resolves.toBeUndefined();
-
-    expect(box.fetches).toStrictEqual([[dentist.id], [paella.id]]);
-    expect(box.lists).toStrictEqual([]);
-    expect(box.removed).toStrictEqual([]);
-    expect(box.objectRemovals).toStrictEqual([]);
-  });
-
-  it('skips a missing parent and takes the next one', async () => {
-    const box = forgetting({
-      hits: [hit(tuesday, 0.9), hit(ten, 0.8), hit(rice, 0.4)],
-      fetched: [paella],
-    });
-
-    await expect(resolveForget(box.deps, { query: 'the dentist' })).resolves.toBe(paella);
-
-    expect(box.fetches).toStrictEqual([[dentist.id], [paella.id]]);
-    expect(box.removed).toStrictEqual([]);
-  });
-
-  it('rejects a blank query before embedding', async () => {
-    const box = forgetting();
-
-    await expect(resolveForget(box.deps, {})).rejects.toThrow(
-      new TypeError('forget() needs a query'),
-    );
-
-    await expect(resolveForget(box.deps, { query: '   ' })).rejects.toThrow(
-      new TypeError('forget() needs a query'),
-    );
-
-    expect(box.embeds).toStrictEqual([]);
-    expect(box.searches).toStrictEqual([]);
-  });
-});
 
 describe('forget', () => {
   it('removes the parent, its children, and the object', async () => {
@@ -593,7 +446,6 @@ describe('forget', () => {
     expect(box.lists).toStrictEqual([{ filter: { parentId: dentist.id }, limit: 512 }]);
     expect(box.removed).toStrictEqual([[dentist.id, tuesday.id, ten.id]]);
     expect(box.objectRemovals).toStrictEqual(['photos/2026/03/dentist.jpg']);
-    expect(box.searches).toStrictEqual([]);
   });
 
   it('does nothing when the parent is already gone', async () => {

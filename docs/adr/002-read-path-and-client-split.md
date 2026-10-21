@@ -19,18 +19,24 @@ Phase 2, and the only question was whether to pretend otherwise until then.
    `ask()`, which retrieves and synthesises. MCP exposes retrieval primitives (`search_memory`,
    `get_memory`, `get_file_link`) and lets Claude reason over the chunks. Returning synthesised
    prose to a reasoning client would summarise a summary and blur the citations.
+   _Amended 2026-10-21:_ `ask()` is deleted. Telegram runs the ADR 004 tool turn over `search()`
+   and the same primitives, so the two clients converge.
 2. **MCP is a two-way client, not a reader.** It also exposes ingestion tools, so a snippet or a
    file can be saved from the IDE. Core ingestion is therefore transport-neutral: a payload
    carries `source` and `source_ref`, never a Telegram message id.
 3. **Intent is classified, not guessed from syntax.** One cheap structured-output call maps each
    inbound message to `save`, `ask`, `recall-by-filter`, or `forget`, which is what the graph
    branches on. `recall-by-filter` skips vector search entirely and runs a payload query.
+   _Superseded 2026-10-21 by ADR 004:_ nothing is classified. One tool-calling turn on the strong
+   model chooses among four tools, and one message can do more than one thing.
 4. **Misclassification is recovered by the user, not by saving everything.** The reply carries an
    inline keyboard — save-as-memory on an answer, undo on a save. Saving every question instead
    would fill the collection with transient text and degrade retrieval.
    _Amended 2026-10-20:_ the save-as-memory button is removed. It offered to store the
    question text, which is rarely wanted; an explicit save is an explicit message. Undo on a
-   save stays. ADR 004 proposes replacing this decision outright.
+   save stays.
+   _Superseded 2026-10-21 by ADR 004:_ no classification exists to recover from. Undo on a save
+   and the Forget confirmation stay inline buttons (ADR 004 decision 3).
 5. **A chat is a conversation, stored in Postgres.** Each Telegram chat (and each MCP thread)
    is one `conversations` row; every user message and bot reply is a `conversation_turns` row.
    A new message sees the recent turns of that chat with no reply gesture required. The window
@@ -54,4 +60,5 @@ hurt short keyword-like queries, which is most of what a personal hub receives; 
 already covers that case. Revisit once a few hundred real memories exist and some query actually
 disappoints — delete the commitment if it does not pay for itself.
 
-Spec `002-retrieval` carries the read path. Spec `001-tg-ingestion` stops at the write path.
+Spec `002-retrieval` carries the read path, and spec `003-agentic-read-path` replaces its intent
+routing. Spec `001-tg-ingestion` stops at the write path.

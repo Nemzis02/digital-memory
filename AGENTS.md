@@ -3,6 +3,7 @@
 ## Language & Communication
 
 - All conversations, commit messages, code comments, and specifications MUST be in English.
+- Write English that a non-native reader understands on the first read: plain common words, short sentences, active voice, no phrasal verbs or idioms. Apply the `asd-ste100` skill in STE-flavored mode to prose, and in Strict mode to error messages, tool descriptions, and prompts.
 
 ## MEMORY.md Discipline
 
