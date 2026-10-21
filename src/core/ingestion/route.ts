@@ -1,200 +1,87 @@
 import type { UUID } from 'node:crypto';
+import type { TurnOptions } from '../agent/turn.ts';
 import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
-import type { ChatModel } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
-import type { MemoryPayload, MemorySource } from '../memory/payload.ts';
+import type { MemorySource } from '../memory/payload.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
-import { NOTHING_FOUND, type Answer } from '../retrieval/answer.ts';
-import type { Intent, IntentClassifier, IntentSlots } from '../retrieval/intent.ts';
+import { NOTHING_FOUND } from '../retrieval/answer.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
-import { escapeHtml, formatAnswer, present, savedReply, type RouteReply } from './reply.ts';
+import { present, savedReply, type RouteReply } from './reply.ts';
 
 const log = logger.child({ module: 'ingestion/route' });
 
 const FORGOTTEN = 'Forgotten.';
 
-const CHAT_REPLY = "Ask me about something you've saved.";
+const NOT_KEPT = 'Not kept.';
 
-const CHAT_SYSTEM =
-  'The user greeted you or reacted. Reply in one or two sentences, in the language of their message. Do not invent saved memories. Do not say that a search happened.';
-
-const MISS_SYSTEM =
-  "Nothing in the user's archive matches what they asked. Reply with one sentence in the language of their message saying nothing is saved about it. Do not invent a memory.";
-
-export interface Retrieval {
-  ask(slots: IntentSlots): Promise<Answer>;
-  recall(slots: IntentSlots): Promise<MemoryPayload[]>;
-  resolveForget(slots: IntentSlots): Promise<MemoryPayload | undefined>;
-  forget(parentId: UUID): Promise<boolean>;
-}
+export type RunTurn = (
+  message: InboundMessage,
+  context: readonly ConversationTurn[],
+  options?: TurnOptions,
+) => Promise<RouteReply>;
 
 export interface RouteDeps {
   source: MemorySource;
-  classifier: IntentClassifier;
   pipeline: IngestionPipeline;
   conversations: ConversationLog;
-  retrieval: Retrieval;
-  fast: ChatModel;
+  turn: RunTurn;
+  forget(parentId: UUID): Promise<boolean>;
   now?: () => Date;
 }
 
-async function phrase(
-  model: ChatModel,
-  system: string,
-  text: string,
-  fallback: string,
-): Promise<string> {
-  try {
-    const reply = (
-      await model.complete({
-        system,
-        turns: [{ role: 'user', parts: [{ type: 'text', text }] }],
-      })
-    ).trim();
-
-    return reply === '' ? fallback : reply;
-  } catch (error: unknown) {
-    log.error('failed to phrase a reply', { error });
-
-    return fallback;
-  }
-}
-
-function day(epoch: number): string {
-  return new Date(epoch * 1000).toISOString().slice(0, 10);
-}
-
-function formatRecall(slots: IntentSlots, memories: readonly MemoryPayload[]): string {
-  if (memories.length === 0) {
-    return NOTHING_FOUND;
-  }
-
-  return memories
-    .map((memory) => {
-      const epoch =
-        slots.orderBy === 'event_at' ? (memory.event_at ?? memory.created_at) : memory.created_at;
-
-      return `${day(epoch)} · ${memory.summary}`;
-    })
-    .join('\n');
+export interface DispatchOptions {
+  /** False on the re-run after Undo. */
+  saving?: boolean;
+  userTurn?: { body: string; sourceRef: string };
 }
 
 export function forgetResult(removed: boolean): RouteReply {
   return present({ text: removed ? FORGOTTEN : NOTHING_FOUND, keyboard: 'none' });
 }
 
-function slotsFor(intent: Intent, slots: IntentSlots, message: InboundMessage): IntentSlots {
-  if (intent !== 'ask' && intent !== 'forget') {
-    return slots;
-  }
-
-  const query = slots.query?.trim();
-
-  if (query === undefined || query === '') {
-    return { ...slots, query: turnBody(message) };
-  }
-
-  return query === slots.query ? slots : { ...slots, query };
+function captionless(message: InboundMessage): boolean {
+  return message.file !== undefined && message.text.trim() === '';
 }
 
-export async function respond(
-  deps: Pick<RouteDeps, 'source' | 'classifier' | 'pipeline' | 'retrieval' | 'fast'>,
+async function respond(
+  deps: RouteDeps,
   message: InboundMessage,
-  context: readonly ConversationTurn[],
-  forced?: 'ask',
+  saving: boolean | undefined,
 ): Promise<RouteReply> {
-  const classified =
-    forced === undefined
-      ? await deps.classifier.classify({ text: turnBody(message), context })
-      : { intent: forced, slots: { query: turnBody(message) } };
-
-  const slots = slotsFor(classified.intent, classified.slots, message);
-
-  switch (classified.intent) {
-    case 'save': {
-      const result = await deps.pipeline.ingest({ source: deps.source, message });
-
-      log.info('ingested', { id: result.id, type: message.type, points: result.points });
-
-      return present({ text: savedReply(result), keyboard: 'undo' });
+  // A file with no caption leaves nothing for a model to decide, so it is kept as is.
+  if (captionless(message)) {
+    if (saving === false) {
+      return present({ text: NOT_KEPT, keyboard: 'none' });
     }
 
-    case 'ask': {
-      const answer = await deps.retrieval.ask(slots);
-      const formatted = formatAnswer(answer);
-      const missed = formatted.text === NOTHING_FOUND;
+    const result = await deps.pipeline.ingest({ source: deps.source, message });
 
-      const text = missed
-        ? await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND)
-        : formatted.text;
+    log.info('ingested', { id: result.id, type: message.type, points: result.points });
 
-      return present({
-        text,
-        html: missed ? escapeHtml(text) : formatted.html,
-        keyboard: 'none',
-        ...(formatted.files === undefined ? {} : { files: formatted.files }),
-      });
-    }
-
-    case 'chat':
-      return present({
-        text: await phrase(deps.fast, CHAT_SYSTEM, turnBody(message), CHAT_REPLY),
-        keyboard: 'none',
-      });
-
-    case 'recall-by-filter': {
-      const memories = await deps.retrieval.recall(slots);
-      const listed = formatRecall(slots, memories);
-
-      return present({
-        text:
-          listed === NOTHING_FOUND
-            ? await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND)
-            : listed,
-        keyboard: 'none',
-      });
-    }
-
-    case 'forget': {
-      const parent = await deps.retrieval.resolveForget(slots);
-
-      if (parent === undefined) {
-        return present({
-          text: await phrase(deps.fast, MISS_SYSTEM, turnBody(message), NOTHING_FOUND),
-          keyboard: 'none',
-        });
-      }
-
-      return present({
-        text: `Forget ${parent.summary}?`,
-        keyboard: 'forget',
-        parentId: parent.id,
-      });
-    }
+    return present({ text: savedReply(result), keyboard: 'undo' });
   }
+
+  const now = deps.now ?? (() => new Date());
+
+  const context = contextWindow(
+    await deps.conversations.turns(message.chatRef, message.replyToSourceRef),
+    now(),
+    message.replyToSourceRef,
+  );
+
+  return deps.turn(message, context, saving === undefined ? undefined : { saving });
 }
 
 export async function dispatch(
   deps: RouteDeps,
   message: InboundMessage,
   send: (reply: RouteReply) => Promise<string>,
-  options?: { intent?: 'ask'; userTurn?: { body: string; sourceRef: string } },
+  options?: DispatchOptions,
 ): Promise<RouteReply> {
-  const now = deps.now ?? (() => new Date());
-
-  const context =
-    options?.intent === undefined
-      ? contextWindow(
-          await deps.conversations.turns(message.chatRef, message.replyToSourceRef),
-          now(),
-          message.replyToSourceRef,
-        )
-      : [];
-
-  const reply = await respond(deps, message, context, options?.intent);
+  const reply = await respond(deps, message, options?.saving);
   const sentRef = await send(reply);
   const userTurn = options?.userTurn ?? { body: turnBody(message), sourceRef: message.sourceRef };
 

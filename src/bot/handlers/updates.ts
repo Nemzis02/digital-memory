@@ -263,7 +263,7 @@ async function confirmForget(
   let removed: boolean;
 
   try {
-    removed = await deps.retrieval.forget(parentId);
+    removed = await deps.forget(parentId);
   } catch (error) {
     log.error('failed to forget', { error, id: parentId });
 
@@ -373,7 +373,7 @@ export async function handleCallback(
       deps,
       original,
       (reply) => sendReply(ctx, accessible.message_id, reply, storage),
-      { intent: 'ask', userTurn: { body: UNDO, sourceRef: callback.id } },
+      { saving: false, userTurn: { body: UNDO, sourceRef: callback.id } },
     );
   } catch (error) {
     log.error('failed to reroute message', { error });

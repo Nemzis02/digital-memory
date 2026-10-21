@@ -3,13 +3,12 @@ import { Api } from 'grammy';
 import { getEnv } from './config/env.ts';
 import { createConversationLog } from './core/conversation/store.ts';
 import { closeDatabase } from './core/db/client.ts';
-import type { Retrieval } from './core/ingestion/route.ts';
+import { runTurn } from './core/agent/turn.ts';
 import { embeddings } from './core/llm/embeddings.ts';
 import { llmRouter } from './core/llm/router.ts';
 import { logger } from './core/logging/logger.ts';
 import { ingestionPipeline } from './core/pipeline/graph.ts';
-import { createIntentClassifier } from './core/retrieval/classifier.ts';
-import { ask, forget, recall, resolveForget } from './core/retrieval/query.ts';
+import { forget } from './core/retrieval/query.ts';
 import { r2Storage } from './core/storage/r2.ts';
 import { qdrantStore } from './core/vector/qdrant.ts';
 import { serve } from './app.ts';
@@ -35,21 +34,25 @@ async function main(): Promise<void> {
   const embedded = embeddings();
   const storage = r2Storage();
 
-  const retrieval: Retrieval = {
-    ask: (slots) => ask({ store, embeddings: embedded, model: router.model('strong') }, slots),
-    recall: (slots) => recall(store, slots),
-    resolveForget: (slots) => resolveForget({ store, embeddings: embedded }, slots),
-    forget: (parentId) => forget({ store, storage }, parentId),
-  };
-
   const bot = createBot({
     token: env.TELEGRAM_BOT_TOKEN,
     adminId: env.TELEGRAM_ADMIN_ID,
-    classifier: createIntentClassifier({ router }),
     pipeline,
     conversations: createConversationLog(),
-    retrieval,
-    fast: router.model('fast'),
+    turn: (message, context, options) =>
+      runTurn(
+        {
+          model: router.model('strong'),
+          store,
+          embeddings: embedded,
+          pipeline,
+          source: 'telegram',
+        },
+        message,
+        context,
+        options,
+      ),
+    forget: (parentId) => forget({ store, storage }, parentId),
     storage,
   });
 

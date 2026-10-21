@@ -4,14 +4,13 @@ import type { Update, UserFromGetMe } from 'grammy/types';
 import { describe, expect, it } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
 import type { ConversationTurn } from '../core/conversation/context.ts';
-import type { Retrieval } from '../core/ingestion/route.ts';
-import type { ChatModel } from '../core/llm/router.ts';
+import { formatAnswer, present, savedReply } from '../core/ingestion/reply.ts';
+import type { RunTurn } from '../core/ingestion/route.ts';
 import { memoryId } from '../core/memory/id.ts';
 import type { IngestionPipeline } from '../core/pipeline/graph.ts';
 import type { IngestionInput } from '../core/pipeline/state.ts';
 import type { UndoTarget } from '../core/pipeline/undo.ts';
-import { NOTHING_FOUND, type Answer } from '../core/retrieval/answer.ts';
-import { stubIntentClassifier, type IntentClassifier } from '../core/retrieval/intent.ts';
+import { NOTHING_FOUND } from '../core/retrieval/answer.ts';
 import type { ObjectStorage } from '../core/storage/object-storage.ts';
 import type { Citation } from '../core/retrieval/answer.ts';
 import { createBot } from './bot.ts';
@@ -124,27 +123,7 @@ function recordingPipeline(): {
 
 const PARENT = '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12';
 
-function recordingRetrieval(removed = true): Retrieval & { forgotten: UUID[] } {
-  const forgotten: UUID[] = [];
-
-  return {
-    forgotten,
-    ask() {
-      return Promise.resolve({ answer: NOTHING_FOUND, citations: [] });
-    },
-    recall() {
-      return Promise.resolve([]);
-    },
-    resolveForget() {
-      return Promise.resolve(undefined);
-    },
-    forget(parentId) {
-      forgotten.push(parentId);
-
-      return Promise.resolve(removed);
-    },
-  };
-}
+const NOT_KEPT = 'Ничего сохранённого нет.';
 
 function rejectingStorage(): ObjectStorage {
   return {
@@ -166,13 +145,10 @@ function rejectingStorage(): ObjectStorage {
   };
 }
 
-function citingRetrieval(answer: string, citations: Citation[]): Retrieval & { forgotten: UUID[] } {
-  return {
-    ...recordingRetrieval(),
-    ask() {
-      return Promise.resolve<Answer>({ answer, citations });
-    },
-  };
+/** A turn in which the model searched and answered, citing these memories. */
+function answering(answer: string, citations: Citation[] = []): RunTurn {
+  return () =>
+    Promise.resolve(present({ ...formatAnswer({ answer, citations }), keyboard: 'none' }));
 }
 
 function cited(summary: string, key: string, type: 'photo' | 'document', name?: string): Citation {
@@ -207,31 +183,51 @@ function streamingStorage(
   };
 }
 
-const phrasingFast: ChatModel = {
-  id: 'fake-fast',
-  complete: () => Promise.resolve('Ничего сохранённого нет.'),
-  object: () => Promise.reject(new Error('unused')),
-  run: () => Promise.reject(new Error('unused')),
-};
-
-function harness(
-  retrieval: Retrieval & { forgotten: UUID[] } = recordingRetrieval(),
-  extras?: { classifier?: IntentClassifier; storage?: ObjectStorage; failHtml?: boolean },
-) {
+function harness(extras?: {
+  turn?: RunTurn;
+  removed?: boolean;
+  storage?: ObjectStorage;
+  failHtml?: boolean;
+}) {
   const sent: Sent[] = [];
+  const turns: { text: string; saving?: boolean }[] = [];
+  const forgotten: UUID[] = [];
   let messageId = 50;
 
   const pipeline = recordingPipeline();
   const conversations = memoryLog();
 
+  // By default the model keeps every message, and says so plainly once saving is off.
+  const keeping: RunTurn = async (message, _context, options) => {
+    if (options?.saving === false) {
+      return { text: NOT_KEPT, keyboard: 'none' };
+    }
+
+    const result = await pipeline.pipeline.ingest({ source: 'telegram', message });
+
+    return { text: savedReply(result), keyboard: 'undo' };
+  };
+
+  const turn = extras?.turn ?? keeping;
+
   const bot = createBot({
     token: TOKEN,
     adminId: ADMIN,
-    classifier: extras?.classifier ?? stubIntentClassifier(),
     pipeline: pipeline.pipeline,
     conversations,
-    retrieval,
-    fast: phrasingFast,
+    turn(message, context, options) {
+      turns.push({
+        text: message.text,
+        ...(options?.saving === undefined ? {} : { saving: options.saving }),
+      });
+
+      return turn(message, context, options);
+    },
+    forget(parentId) {
+      forgotten.push(parentId);
+
+      return Promise.resolve(extras?.removed ?? true);
+    },
     storage: extras?.storage ?? rejectingStorage(),
   });
 
@@ -272,7 +268,7 @@ function harness(
     return Promise.resolve({ ok: true as const, result: true as const } as never);
   });
 
-  return { bot, sent, ...pipeline, conversations, forgotten: retrieval.forgotten };
+  return { bot, sent, ...pipeline, conversations, forgotten, turns };
 }
 
 function person(id: number) {
@@ -284,10 +280,6 @@ let updateId = 1;
 function update(body: Record<string, unknown>): Update {
   return { update_id: updateId++, ...body };
 }
-
-const ASK = {
-  classify: () => Promise.resolve({ intent: 'ask' as const, slots: { query: 'dentist' } }),
-};
 
 function askUpdate(text = 'when is the dentist'): Update {
   return update({
@@ -303,7 +295,7 @@ function askUpdate(text = 'when is the dentist'): Update {
 
 describe('createBot', () => {
   it('maps each inbound kind onto the pipeline and replies to that message', async () => {
-    const { bot, sent, ingested } = harness();
+    const { bot, sent, ingested, turns } = harness();
 
     const cases = [
       { type: 'text', message: { text: 'buy milk' } },
@@ -364,6 +356,9 @@ describe('createBot', () => {
         expect(inbound?.file?.fileId).toBe(item.fileId);
       }
     }
+
+    // Captionless files skip the model turn entirely.
+    expect(turns.map((turn) => turn.text)).toStrictEqual(['buy milk', 'https://example.com/a']);
   });
 
   it('captions the first file with the answer and sends the rest as an album', async () => {
@@ -382,7 +377,7 @@ describe('createBot', () => {
       [huge, 50 * 1024 * 1024 + 1],
     ]);
 
-    const retrieval = citingRetrieval('Tuesday at 10.', [
+    const turn = answering('Tuesday at 10.', [
       cited('Appointment card', photo, 'photo'),
       cited('Big card', big, 'photo'),
       cited('Insurance card', pdf, 'document'),
@@ -391,8 +386,8 @@ describe('createBot', () => {
       cited('Gone', missing, 'document'),
     ]);
 
-    const { bot, sent, conversations } = harness(retrieval, {
-      classifier: ASK,
+    const { bot, sent, conversations } = harness({
+      turn,
       storage: streamingStorage(sizes, destroyed),
     });
 
@@ -433,10 +428,10 @@ describe('createBot', () => {
   it('sends one document when the answer fits its caption', async () => {
     const pdf = 'documents/2026/03/card.pdf';
 
-    const { bot, sent } = harness(
-      citingRetrieval('**Tuesday**', [cited('Insurance card', pdf, 'document')]),
-      { classifier: ASK, storage: streamingStorage(new Map([[pdf, 20]])) },
-    );
+    const { bot, sent } = harness({
+      turn: answering('**Tuesday**', [cited('Insurance card', pdf, 'document')]),
+      storage: streamingStorage(new Map([[pdf, 20]])),
+    });
 
     await bot.handleUpdate(askUpdate());
 
@@ -450,17 +445,14 @@ describe('createBot', () => {
     const other = 'documents/2026/03/11111111-1637-4d40-a03e-d077d0a81af8.pdf';
     const bare = 'documents/2026/03/22222222-1637-4d40-a03e-d077d0a81af8.pdf';
 
-    const { bot, sent } = harness(
-      citingRetrieval('Here.', [
+    const { bot, sent } = harness({
+      turn: answering('Here.', [
         cited('Programme', named, 'document', 'Programa Fallas 2023.pdf'),
         cited('Card', other, 'document', 'Tarjeta.pdf'),
         cited('Old', bare, 'document'),
       ]),
-      {
-        classifier: ASK,
-        storage: streamingStorage(new Map([named, other, bare].map((key) => [key, 10]))),
-      },
-    );
+      storage: streamingStorage(new Map([named, other, bare].map((key) => [key, 10]))),
+    });
 
     await bot.handleUpdate(askUpdate());
 
@@ -477,10 +469,10 @@ describe('createBot', () => {
     const pdf = 'documents/2026/03/card.pdf';
     const answer = 'a'.repeat(1025);
 
-    const { bot, sent, conversations } = harness(
-      citingRetrieval(answer, [cited('Insurance card', pdf, 'document')]),
-      { classifier: ASK, storage: streamingStorage(new Map([[pdf, 20]])) },
-    );
+    const { bot, sent, conversations } = harness({
+      turn: answering(answer, [cited('Insurance card', pdf, 'document')]),
+      storage: streamingStorage(new Map([[pdf, 20]])),
+    });
 
     await bot.handleUpdate(askUpdate());
 
@@ -496,14 +488,11 @@ describe('createBot', () => {
     const pdf = 'documents/2026/03/card.pdf';
     const destroyed: string[] = [];
 
-    const { bot, sent } = harness(
-      citingRetrieval('**Tuesday**', [cited('Insurance card', pdf, 'document')]),
-      {
-        classifier: ASK,
-        storage: streamingStorage(new Map([[pdf, 20]]), destroyed),
-        failHtml: true,
-      },
-    );
+    const { bot, sent } = harness({
+      turn: answering('**Tuesday**', [cited('Insurance card', pdf, 'document')]),
+      storage: streamingStorage(new Map([[pdf, 20]]), destroyed),
+      failHtml: true,
+    });
 
     await bot.handleUpdate(askUpdate());
 
@@ -524,13 +513,13 @@ describe('createBot', () => {
     const missing = 'documents/2026/03/gone.pdf';
     const pdf = 'documents/2026/03/card.pdf';
 
-    const { bot, sent } = harness(
-      citingRetrieval('Tuesday.', [
+    const { bot, sent } = harness({
+      turn: answering('Tuesday.', [
         cited('Gone', missing, 'document'),
         cited('Insurance card', pdf, 'document'),
       ]),
-      { classifier: ASK, storage: streamingStorage(new Map([[pdf, 20]])) },
-    );
+      storage: streamingStorage(new Map([[pdf, 20]])),
+    });
 
     await bot.handleUpdate(askUpdate());
 
@@ -549,19 +538,16 @@ describe('createBot', () => {
       e: 'photos/2026/03/e.jpg',
     };
 
-    const { bot, sent } = harness(
-      citingRetrieval('Here.', [
+    const { bot, sent } = harness({
+      turn: answering('Here.', [
         cited('A', keys.a, 'photo'),
         cited('B', keys.b, 'document'),
         cited('C', keys.c, 'photo'),
         cited('D', keys.d, 'document'),
         cited('E', keys.e, 'photo'),
       ]),
-      {
-        classifier: ASK,
-        storage: streamingStorage(new Map(Object.values(keys).map((key) => [key, 10]))),
-      },
-    );
+      storage: streamingStorage(new Map(Object.values(keys).map((key) => [key, 10]))),
+    });
 
     await bot.handleUpdate(askUpdate());
 
@@ -577,18 +563,7 @@ describe('createBot', () => {
   });
 
   it('splits a long formatted reply and keeps the log as the clipped markdown', async () => {
-    const retrieval = {
-      ...recordingRetrieval(),
-      ask() {
-        return Promise.resolve<Answer>({ answer: 'a'.repeat(5000), citations: [] });
-      },
-    };
-
-    const { bot, sent, conversations } = harness(retrieval, {
-      classifier: {
-        classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'long' } }),
-      },
-    });
+    const { bot, sent, conversations } = harness({ turn: answering('a'.repeat(5000)) });
 
     await bot.handleUpdate(
       update({
@@ -617,17 +592,8 @@ describe('createBot', () => {
   });
 
   it('sends the plain answer when telegram rejects the formatted one', async () => {
-    const retrieval = {
-      ...recordingRetrieval(),
-      ask() {
-        return Promise.resolve<Answer>({ answer: '**Tuesday**', citations: [] });
-      },
-    };
-
-    const { bot, sent, conversations } = harness(retrieval, {
-      classifier: {
-        classify: () => Promise.resolve({ intent: 'ask', slots: { query: 'when' } }),
-      },
+    const { bot, sent, conversations } = harness({
+      turn: answering('**Tuesday**'),
       failHtml: true,
     });
 
@@ -672,7 +638,7 @@ describe('createBot', () => {
   });
 
   it('undoes by the original message id, answers instead, and ignores a stale save', async () => {
-    const { bot, sent, ingested, undone, conversations } = harness();
+    const { bot, sent, ingested, undone, conversations, turns } = harness();
 
     const original = {
       message_id: 10,
@@ -720,11 +686,12 @@ describe('createBot', () => {
     const answered = replies()[1];
 
     expect(answered?.payload).toMatchObject({
-      text: 'Ничего сохранённого нет.',
+      text: NOT_KEPT,
       reply_parameters: { message_id: 10 },
     });
 
     expect(answered?.payload.reply_markup).toBeUndefined();
+    expect(turns).toStrictEqual([{ text: 'buy milk' }, { text: 'buy milk', saving: false }]);
 
     expect(conversations.exchanges.map((exchange) => exchange.user.body)).toEqual([
       'buy milk',
@@ -780,8 +747,7 @@ describe('createBot', () => {
   });
 
   it('forgets the confirmed parent and does not ingest it', async () => {
-    const retrieval = recordingRetrieval();
-    const { bot, sent, ingested, forgotten, conversations } = harness(retrieval);
+    const { bot, sent, ingested, forgotten, conversations } = harness();
 
     await bot.handleUpdate(
       update({
@@ -837,7 +803,7 @@ describe('createBot', () => {
   });
 
   it('says nothing found when the confirmed parent is already gone', async () => {
-    const { bot, sent, forgotten } = harness(recordingRetrieval(false));
+    const { bot, sent, forgotten } = harness({ removed: false });
 
     await bot.handleUpdate(
       update({

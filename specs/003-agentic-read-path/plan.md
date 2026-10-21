@@ -83,6 +83,8 @@ Undo stays a callback. It undoes the ingestion and re-runs the original message 
 `runTurn()` with a system note that the user did not want it saved, so `save_memory` is not
 offered on that turn.
 
+A captionless file has nothing to answer, so Undo on one replies `Not kept.` and runs no turn.
+
 ## 5. Tests
 
 - Tools: each over in-memory fakes of the store, embeddings and pipeline, already used in
