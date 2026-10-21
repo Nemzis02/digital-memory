@@ -65,6 +65,7 @@ what to call, sees the result, and answers or asks back.
 - Whether small talk needs a tool-less fast path on the fast model.
 - Whether `save_memory` accepts a summary the model wrote, or always re-derives one.
 - The step cap and the per-message timeout. Start at 4 steps and 30 seconds, then tune.
-- Tracing the loop (OpenTelemetry, Langfuse) is a separate decision.
+- Tracing the loop (OpenTelemetry, Langfuse) is a separate decision. _Decided 2026-10-21 in
+  ADR 005._
 
 Spec `003-agentic-read-path` carries the implementation.

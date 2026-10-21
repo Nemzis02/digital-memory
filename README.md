@@ -70,6 +70,11 @@ digital-memory/
 ├── specs/                     # Feature Specifications (SDD workflow)
 │   ├── 001-tg-ingestion/      # Phase 1: Ingestion Pipeline
 │   ├── 002-retrieval/         # Phase 1: Read path (search, recall, forget)
-│   └── 003-agentic-read-path/ # Phase 1: One tool-calling turn per message
+│   ├── 003-agentic-read-path/ # Phase 1: One tool-calling turn per message
+│   ├── 004-stack-currency/    # MCP wording, turn timeout, Telegram retry, releases
+│   ├── 005-observability/     # Langfuse tracing of model calls
+│   ├── 006-evals/             # Golden set, recall and tool-choice scores
+│   ├── 007-sparse-bm25/       # Real BM25 sparse vectors
+│   └── 008-deploy/            # Container image, health checks, integration CI
 └── src/                       # Core application source code
 ```
