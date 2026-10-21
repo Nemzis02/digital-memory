@@ -22,11 +22,15 @@ src/core/
 
 `ChatModel.run(request, tools, maxSteps)` wraps `generateText` with `tools` and
 `stopWhen: isStepCount(maxSteps)`. It returns `{ text, calls }`, where `calls` lists each tool
-name with its parsed input and output, in order. Tools are AI SDK `tool()` definitions with a
-Zod `inputSchema`. The router validates media types for file parts as it does today.
+name with its parsed input and its output or error message, in order. Tools are passed as a
+`ToolSpec` (description, Zod `input`, `execute`); the router turns them into AI SDK `tool()`
+definitions, since `ai` may not be imported outside `src/core/llm/`. The router validates
+media types for file parts as it does today.
 
-Only the strong model is used for `run`. A turn that hits the step cap without final text
-fails with a typed error, and the bot answers with the existing generic failure.
+A tool that throws does not fail the turn: the error goes back to the model, which answers
+around it. Only the strong model is used for `run`. A turn whose last step still calls tools
+fails with `StepLimitError`, which carries the calls already made, because that step's tools
+have run. The bot answers with the existing generic failure.
 
 ## 2. Tools
 

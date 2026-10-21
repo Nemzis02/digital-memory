@@ -4,6 +4,12 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-21 — AI SDK tool loop: the capped step still runs its tools
+
+`generateText` executes a step's tool calls before `stopWhen` ends the loop, so at the cap
+`text` is `''` and side effects already happened. A throwing `execute` never rejects the call;
+it reaches the model as `error-text` with the value `String(error)`, e.g. `Error: …`.
+
 ## 2026-10-20 — grammY `InputFile` treats any object with a `url` key as a URL
 
 An S3 `GetObject` body is an `IncomingMessage`, whose `url` is `''`, so grammY fetches it and
@@ -21,11 +27,6 @@ endpoint cert is not provisioned yet, and no client option fixes that.
 
 `addNode('enrichment', …)` against a state that has an `enrichment` channel throws at build
 time, not at run time. Channels are nouns, so node names are verbs: `enrich`, `index`.
-
-## 2026-10-12 — gemini-embedding-2
-
-`taskType` is rejected. Query text is `task: search result | query: …` and document text is
-`title: none | text: …`; both sides must match. A list of strings is one input and one vector.
 
 ## 2026-10-10 — Toolchain bootstrap
 
@@ -68,9 +69,8 @@ fails with "was not found by the project service". Adding it to `include` would 
 
 ### gitleaks flags Telegram tokens with exactly 34 characters after `:A`
 
-Placeholder values in `.env.example` and test fixtures tripped it. Prefer the inline
-`// gitleaks:allow` directive over a path allowlist for `*.test.ts`, which would blind the
-scanner to a real secret pasted into a test later.
+Use the inline `// gitleaks:allow` directive, not a path allowlist for `*.test.ts`, which
+would blind the scanner to a real secret pasted into a test later.
 
 ### `file-type` returns MIME types carrying parameters
 

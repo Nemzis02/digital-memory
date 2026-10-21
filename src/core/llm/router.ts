@@ -1,7 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { LanguageModel, ModelMessage } from 'ai';
-import { generateText, Output } from 'ai';
+import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
+import { generateText, isStepCount, Output, tool } from 'ai';
 import type { ZodType } from 'zod';
 import type { Env } from '../../config/env.ts';
 import { getEnv } from '../../config/env.ts';
@@ -47,10 +47,38 @@ export interface CompletionRequest {
   turns: readonly ChatTurn[];
 }
 
+export interface ToolSpec<I = unknown> {
+  readonly description: string;
+  readonly input: ZodType<I>;
+  execute(input: I): Promise<unknown>;
+}
+
+export type ToolSpecs = Readonly<Record<string, ToolSpec>>;
+
+export type ToolCall =
+  | { readonly name: string; readonly input: unknown; readonly output: unknown }
+  | { readonly name: string; readonly input: unknown; readonly error: string };
+
+export interface RunResult {
+  readonly text: string;
+  readonly calls: readonly ToolCall[];
+}
+
+export class StepLimitError extends Error {
+  readonly calls: readonly ToolCall[];
+
+  constructor(model: string, maxSteps: number, calls: readonly ToolCall[]) {
+    super(`${model} was still calling tools after ${maxSteps} steps`);
+    this.name = 'StepLimitError';
+    this.calls = calls;
+  }
+}
+
 export interface ChatModel {
   readonly id: string;
   complete(request: CompletionRequest): Promise<string>;
   object<T>(request: CompletionRequest, schema: ZodType<T>): Promise<T>;
+  run(request: CompletionRequest, tools: ToolSpecs, maxSteps: number): Promise<RunResult>;
 }
 
 export interface LlmRouter {
@@ -115,6 +143,35 @@ function requireText(text: string, model: string): string {
   return text;
 }
 
+function toToolSet(tools: ToolSpecs): ToolSet {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, spec]) => [
+      name,
+      tool({
+        description: spec.description,
+        inputSchema: spec.input,
+        execute: (input) => spec.execute(input),
+      }),
+    ]),
+  );
+}
+
+function recordedCalls(steps: readonly StepResult<ToolSet>[]): ToolCall[] {
+  const calls: ToolCall[] = [];
+
+  for (const part of steps.flatMap((step) => step.content)) {
+    if (part.type === 'tool-result') {
+      calls.push({ name: part.toolName, input: part.input, output: part.output });
+    } else if (part.type === 'tool-error') {
+      const error = part.error instanceof Error ? part.error.message : String(part.error);
+
+      calls.push({ name: part.toolName, input: part.input, error });
+    }
+  }
+
+  return calls;
+}
+
 function chatModel(spec: ModelSpec): ChatModel {
   function call(request: CompletionRequest) {
     const { system, turns } = prepared(request);
@@ -148,6 +205,28 @@ function chatModel(spec: ModelSpec): ChatModel {
       log.debug('object', { model: spec.id });
 
       return output;
+    },
+    async run(request, tools, maxSteps) {
+      if (!Number.isInteger(maxSteps) || maxSteps < 1) {
+        throw new TypeError('run() needs a positive integer step cap');
+      }
+
+      const { steps, text } = await generateText({
+        ...call(request),
+        tools: toToolSet(tools),
+        stopWhen: isStepCount(maxSteps),
+      });
+
+      const calls = recordedCalls(steps);
+
+      // The SDK executes the capped step's tools before it stops, so their effects already happened.
+      if ((steps.at(-1)?.toolCalls.length ?? 0) > 0) {
+        throw new StepLimitError(spec.id, maxSteps, calls);
+      }
+
+      log.debug('run', { model: spec.id, steps: steps.length, calls: calls.length });
+
+      return { text: requireText(text, spec.id), calls };
     },
   };
 }

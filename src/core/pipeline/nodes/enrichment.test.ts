@@ -38,6 +38,9 @@ function router(reply: Record<string, unknown>): LlmRouter & { requests: Complet
 
       return Promise.resolve(schema.parse(reply));
     },
+    run() {
+      return Promise.reject(new Error('enrichment uses structured output'));
+    },
   };
 
   return { requests, model: () => model };

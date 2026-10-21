@@ -4,7 +4,7 @@ Blocked on nothing. ADR 004 is the decision; this spec is the plan.
 
 - [x] Task 1: Split `search()` out of `ask()` in `query.ts`. `ask()` calls it. No behaviour
       change; existing tests stay green.
-- [ ] Task 2: `ChatModel.run()` in the router, over `generateText` with `tools` and
+- [x] Task 2: `ChatModel.run()` in the router, over `generateText` with `tools` and
       `stopWhen`. Tests with the mock language model.
 - [ ] Task 3: The four tools in `src/core/agent/tools.ts`, with the memory content fence.
       Export the Zod filter schemas for `search_memory` and `list_memories` from their own

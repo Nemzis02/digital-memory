@@ -211,6 +211,7 @@ const phrasingFast: ChatModel = {
   id: 'fake-fast',
   complete: () => Promise.resolve('Ничего сохранённого нет.'),
   object: () => Promise.reject(new Error('unused')),
+  run: () => Promise.reject(new Error('unused')),
 };
 
 function harness(

@@ -156,6 +156,9 @@ function fakeRouter(): LlmRouter & { requests: CompletionRequest[]; reply: { tex
         }),
       );
     },
+    run() {
+      return Promise.reject(new Error('ingestion never runs tools'));
+    },
   };
 
   return {

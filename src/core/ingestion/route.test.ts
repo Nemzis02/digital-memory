@@ -28,6 +28,9 @@ function fastModel(reply: string): ChatModel & { asked: string[] } {
     object() {
       return Promise.reject(new Error('unused'));
     },
+    run() {
+      return Promise.reject(new Error('unused'));
+    },
   };
 }
 
@@ -401,6 +404,7 @@ describe('respond', () => {
           id: 'fake-fast',
           complete: () => Promise.reject(new Error('down')),
           object: () => Promise.reject(new Error('unused')),
+          run: () => Promise.reject(new Error('unused')),
         },
       },
       message('Привет'),

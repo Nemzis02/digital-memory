@@ -3,8 +3,15 @@ import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { parseEnv, resetEnvCache } from '../../config/env.ts';
-import type { CompletionRequest } from './router.ts';
-import { createRouter, FAST_MODEL, llmRouter, resetLlmRouter, STRONG_MODEL } from './router.ts';
+import type { CompletionRequest, ToolSpec } from './router.ts';
+import {
+  createRouter,
+  FAST_MODEL,
+  llmRouter,
+  resetLlmRouter,
+  StepLimitError,
+  STRONG_MODEL,
+} from './router.ts';
 
 const gate = vi.hoisted(() => ({
   googleParams: [] as { apiKey?: string }[],
@@ -62,6 +69,43 @@ function generated(
     usage,
     warnings: [],
   };
+}
+
+function calling(
+  toolName: string,
+  input: unknown,
+  toolCallId = 'call-1',
+): LanguageModelV4GenerateResult {
+  return {
+    content: [{ type: 'tool-call', toolCallId, toolName, input: JSON.stringify(input) }],
+    finishReason: { unified: 'tool-calls', raw: undefined },
+    usage,
+    warnings: [],
+  };
+}
+
+function scripted(steps: LanguageModelV4GenerateResult[]): MockLanguageModelV4 {
+  const strong = new MockLanguageModelV4({
+    provider: 'anthropic',
+    modelId: STRONG_MODEL,
+    doGenerate: steps,
+  });
+
+  gate.strong = strong;
+
+  return strong;
+}
+
+function searchTool(run: (input: { query: string }) => Promise<unknown>) {
+  const execute = vi.fn(run);
+
+  const spec: ToolSpec<{ query: string }> = {
+    description: 'Search saved memories.',
+    input: z.object({ query: z.string() }),
+    execute,
+  };
+
+  return { spec, execute };
 }
 
 function install(text = 'save'): { fast: MockLanguageModelV4; strong: MockLanguageModelV4 } {
@@ -394,6 +438,154 @@ describe('createRouter', () => {
     await expect(createRouter(withStrong).model('strong').complete(ask('hello'))).rejects.toThrow(
       /claude-sonnet-5-5 returned no text/,
     );
+  });
+
+  it('runs a tool, feeds its result back, and returns the final text with the calls made', async () => {
+    const found = [{ id: 'm1', summary: 'Tapas at Bar Pepe.' }];
+
+    const strong = scripted([
+      calling('search_memory', { query: 'tapas' }),
+      generated('Bar Pepe.\n\nSources: m1'),
+    ]);
+
+    const search = searchTool(() => Promise.resolve(found));
+
+    const result = await createRouter(withStrong)
+      .model('strong')
+      .run(ask('where were the tapas?'), { search_memory: search.spec }, 4);
+
+    expect(result).toEqual({
+      text: 'Bar Pepe.\n\nSources: m1',
+      calls: [{ name: 'search_memory', input: { query: 'tapas' }, output: found }],
+    });
+
+    expect(search.execute).toHaveBeenCalledTimes(1);
+    expect(search.execute).toHaveBeenCalledWith({ query: 'tapas' });
+
+    const first = strong.doGenerateCalls[0];
+    const second = strong.doGenerateCalls[1];
+
+    expect(first?.tools).toMatchObject([
+      {
+        type: 'function',
+        name: 'search_memory',
+        description: 'Search saved memories.',
+        inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+      },
+    ]);
+
+    expect(second?.prompt.slice(-2)).toMatchObject([
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolName: 'search_memory', input: { query: 'tapas' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolName: 'search_memory',
+            output: { type: 'json', value: found },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('answers without calling a tool when the model needs none', async () => {
+    const strong = scripted([generated('Hi!')]);
+    const search = searchTool(() => Promise.resolve([]));
+
+    await expect(
+      createRouter(withStrong).model('strong').run(ask('hello'), { search_memory: search.spec }, 4),
+    ).resolves.toEqual({ text: 'Hi!', calls: [] });
+
+    expect(search.execute).not.toHaveBeenCalled();
+    expect(strong.doGenerateCalls).toHaveLength(1);
+    expect(strong.doGenerateCalls[0]?.tools).toHaveLength(1);
+  });
+
+  it('throws a step limit error, carrying the calls already run, when the cap is reached', async () => {
+    const strong = scripted([
+      calling('search_memory', { query: 'a' }, 'call-1'),
+      calling('search_memory', { query: 'b' }, 'call-2'),
+      generated('never reached'),
+    ]);
+
+    const search = searchTool(() => Promise.resolve([]));
+
+    const failure = await createRouter(withStrong)
+      .model('strong')
+      .run(ask('loop'), { search_memory: search.spec }, 2)
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(StepLimitError);
+
+    expect((failure as StepLimitError).message).toBe(
+      'claude-sonnet-5-5 was still calling tools after 2 steps',
+    );
+
+    expect((failure as StepLimitError).calls).toEqual([
+      { name: 'search_memory', input: { query: 'a' }, output: [] },
+      { name: 'search_memory', input: { query: 'b' }, output: [] },
+    ]);
+
+    expect(strong.doGenerateCalls).toHaveLength(2);
+    expect(search.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a failing tool back to the model and records the error', async () => {
+    const strong = scripted([
+      calling('search_memory', { query: 'tapas' }),
+      generated('Search is unavailable right now.'),
+    ]);
+
+    const search = searchTool(() => Promise.reject(new Error('qdrant down')));
+
+    const result = await createRouter(withStrong)
+      .model('strong')
+      .run(ask('where were the tapas?'), { search_memory: search.spec }, 4);
+
+    expect(result).toEqual({
+      text: 'Search is unavailable right now.',
+      calls: [{ name: 'search_memory', input: { query: 'tapas' }, error: 'qdrant down' }],
+    });
+
+    expect(strong.doGenerateCalls[1]?.prompt.at(-1)).toMatchObject({
+      role: 'tool',
+      content: [
+        { type: 'tool-result', output: { type: 'error-text', value: 'Error: qdrant down' } },
+      ],
+    });
+  });
+
+  it('rejects a non-positive step cap and unreadable media before calling the model', async () => {
+    const strong = scripted([generated('unused')]);
+    const model = createRouter(withStrong).model('strong');
+    const tools = { search_memory: searchTool(() => Promise.resolve([])).spec };
+
+    await expect(model.run(ask('hello'), tools, 0)).rejects.toThrow(/positive integer step cap/);
+
+    await expect(
+      model.run(
+        {
+          system: 'Answer.',
+          turns: [
+            {
+              role: 'user',
+              parts: [
+                { type: 'text', text: 'what is this?' },
+                { type: 'file', mimeType: 'audio/ogg', data: new Uint8Array([1]) },
+              ],
+            },
+          ],
+        },
+        tools,
+        4,
+      ),
+    ).rejects.toThrow(/claude-sonnet-5-5 cannot read audio\/ogg/);
+
+    expect(strong.doGenerateCalls).toHaveLength(0);
   });
 
   it('reuses one router until the cache is reset', () => {

@@ -228,6 +228,9 @@ function answering(options?: {
     object() {
       return Promise.reject(new Error('ask uses a completion'));
     },
+    run() {
+      return Promise.reject(new Error('ask uses a completion'));
+    },
   };
 
   const store: VectorStore = {
