@@ -1,3 +1,4 @@
+import { autoRetry } from '@grammyjs/auto-retry';
 import { Bot } from 'grammy';
 import type { ConversationLog } from '../core/conversation/store.ts';
 import type { RouteDeps, RunTurn } from '../core/ingestion/route.ts';
@@ -22,6 +23,11 @@ export interface BotDependencies {
 
 export function createBot(deps: BotDependencies): Bot {
   const bot = new Bot(deps.token);
+
+  bot.api.config.use(
+    // Without rethrowHttpErrors, network errors retry forever and ignore maxRetryAttempts.
+    autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30, rethrowHttpErrors: true }),
+  );
 
   const runtime: RouteDeps = {
     source: 'telegram',

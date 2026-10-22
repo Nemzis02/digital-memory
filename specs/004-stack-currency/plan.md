@@ -38,9 +38,11 @@ only a fallback. The Drizzle schema already has the PKCE columns.
 
 ## 2. Telegram Flood Control
 
-`bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }))` in
-`createBot()`. It retries 429 with the `retry_after` Telegram sends, and 5xx. A wait longer
-than 30 seconds fails at once, so a handler never sleeps for minutes.
+`bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30,
+rethrowHttpErrors: true }))` in `createBot()`. It retries 429 with the `retry_after` Telegram
+sends, and 5xx. A wait longer than 30 seconds fails at once, so a handler never sleeps for
+minutes. A network error fails at once too: without `rethrowHttpErrors`, the plugin retries
+it with no attempt limit and a back-off of up to one hour.
 
 ## 3. Turn Budget
 
@@ -81,7 +83,8 @@ settings by hand; the agent states this in its summary, it cannot do it.
 - `turn.test.ts`: a scripted model that never resolves, with fake timers, gives the timeout
   reply; the same after a `save_memory` call gives the saved reply with Undo.
 - `bot.test.ts`: the API transformer list contains auto-retry. A 429 then 200 from a stubbed
-  transport sends once more and succeeds.
+  transport sends once more and succeeds. A 429 that asks for more than 30 s, and a network
+  error, each fail after one call.
 
 ## 7. Dependencies
 

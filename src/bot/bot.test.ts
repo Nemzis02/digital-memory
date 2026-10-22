@@ -1,7 +1,8 @@
 import type { UUID } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { HttpError } from 'grammy';
 import type { Update, UserFromGetMe } from 'grammy/types';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
 import type { ConversationTurn } from '../core/conversation/context.ts';
 import { formatAnswer, present, savedReply } from '../core/ingestion/reply.ts';
@@ -827,5 +828,61 @@ describe('createBot', () => {
     expect(sent.filter((call) => call.method === 'sendMessage')[0]?.payload.text).toBe(
       NOTHING_FOUND,
     );
+  });
+});
+
+describe('createBot flood control', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const tooMany = (retryAfter: number) => ({
+    ok: false,
+    error_code: 429,
+    description: 'Too Many Requests',
+    parameters: { retry_after: retryAfter },
+  });
+
+  /** Sends one message through the bot's retry transformer, with `prev` in place of Telegram. */
+  function send(prev: Mock<() => Promise<unknown>>) {
+    const retry = harness().bot.api.config.installedTransformers()[0];
+
+    if (retry === undefined) {
+      throw new Error('createBot installed no transformer');
+    }
+
+    return retry(prev as never, 'sendMessage', { chat_id: 7, text: 'Saved.' });
+  }
+
+  it('waits out a 429 and sends once more', async () => {
+    vi.useFakeTimers();
+
+    const prev = vi
+      .fn<() => Promise<unknown>>()
+      .mockResolvedValueOnce(tooMany(1))
+      .mockResolvedValue({ ok: true });
+
+    const result = send(prev);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(result).resolves.toEqual({ ok: true });
+    expect(prev).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up at once when telegram asks for more than 30 seconds', async () => {
+    const prev = vi.fn<() => Promise<unknown>>().mockResolvedValue(tooMany(31));
+
+    await expect(send(prev)).resolves.toEqual(tooMany(31));
+    expect(prev).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a network error', async () => {
+    const prev = vi
+      .fn<() => Promise<unknown>>()
+      .mockRejectedValue(new HttpError('Network request failed', new Error()));
+
+    await expect(send(prev)).rejects.toBeInstanceOf(HttpError);
+    expect(prev).toHaveBeenCalledTimes(1);
   });
 });
