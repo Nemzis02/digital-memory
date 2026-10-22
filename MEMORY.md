@@ -4,6 +4,11 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-22 — Vitest fake timers do not fire `AbortSignal.timeout()`
+
+Node runs that timer internally, so `advanceTimersByTimeAsync` never aborts the signal. For a
+deadline a test must drive, use an `AbortController` with `setTimeout`.
+
 ## 2026-10-21 — AI SDK tool loop: the capped step still runs its tools
 
 `generateText` executes a step's tool calls before `stopWhen` ends the loop, so at the cap
@@ -42,9 +47,8 @@ parameter properties**. Use an `as const` object with a derived union instead of
 
 ### `exactOptionalPropertyTypes` rejects `field: undefined` on generated API types
 
-OpenAPI-derived request types (Qdrant's `Schemas`) spell optionals as `T | null`, so passing a
-key whose value may be absent does not compile. Spread it in conditionally — `...(x === undefined
-? {} : { x })` — rather than widening the call site or reaching for `null`.
+OpenAPI-derived request types (Qdrant's `Schemas`) spell optionals as `T | null`, so a key whose
+value may be absent does not compile. Spread it in: `...(x === undefined ? {} : { x })`.
 
 ### Relative imports must use `.ts`, not `.js`
 
@@ -55,8 +59,6 @@ say `./env.ts` and still emit `./env.js`.
 
 ### Zod v4 drift
 
-- `z.string().url()` is deprecated; use the top-level `z.url()`.
-- Use `z.prettifyError(error)` instead of looping over `error.issues`.
 - `.min(1, msg)` does not fire for a _missing_ key, only a present-but-empty one. For a
   readable "X is required", pass `z.string({ error: (issue) => ... })` and branch on
   `issue.input === undefined`.
@@ -75,5 +77,4 @@ would blind the scanner to a real secret pasted into a test later.
 ### `file-type` returns MIME types carrying parameters
 
 A Telegram voice note sniffs as `audio/ogg; codecs=opus`, so `=== 'audio/ogg'` silently misses
-every one of them. Sender-declared types are stripped to a bare token before use and sniffed
-types are not, so the two disagree by design. Branch on `ObjectKind`, never on the MIME string.
+every one of them. Branch on `ObjectKind`, never on the MIME string.

@@ -153,7 +153,8 @@ describe('save_memory', () => {
     await expect(box.tools.save_memory.execute({})).resolves.toStrictEqual(filed);
 
     expect(box.ingested).toStrictEqual([{ source: 'telegram', message: MESSAGE }]);
-    expect(box.effects).toStrictEqual({ saved: SAVED });
+    expect(box.effects.saved).toStrictEqual(SAVED);
+    await expect(box.effects.pending).resolves.toStrictEqual(SAVED);
   });
 
   it('ingests the note in place of the text, keeping the rest of the message', async () => {

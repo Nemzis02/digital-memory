@@ -35,6 +35,8 @@ export interface AgentToolDeps {
 /** What the turn's tools did, read by reply composition instead of the model's prose. */
 export interface TurnEffects {
   saved?: IngestResult;
+  /** The save in flight; it outlives a timed-out turn, so the turn can still offer Undo. */
+  pending?: Promise<IngestResult>;
   forgetCandidate?: { id: UUID; summary: string };
 }
 
@@ -144,22 +146,24 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         "Save the user's current message, with any file it carries, as a new memory. Call it only when the user wants something kept. Returns how it was filed.",
       input: saveMemoryInput,
       async execute(input) {
-        const saved = turn.effects.saved;
-
         // The id derives from the message, so a second save would only redo the same point.
-        if (saved !== undefined) {
-          return filed(saved);
+        if (turn.effects.pending !== undefined) {
+          return filed(await turn.effects.pending);
         }
 
         const message =
           input.note === undefined ? turn.message : { ...turn.message, text: input.note };
 
-        const result = await deps.pipeline.ingest({ source: deps.source, message });
+        const pending = deps.pipeline.ingest({ source: deps.source, message }).then((result) => {
+          turn.effects.saved = result;
+          log.info('saved', { id: result.id, type: message.type, points: result.points });
 
-        turn.effects.saved = result;
-        log.info('saved', { id: result.id, type: message.type, points: result.points });
+          return result;
+        });
 
-        return filed(result);
+        turn.effects.pending = pending;
+
+        return filed(await pending);
       },
     },
 

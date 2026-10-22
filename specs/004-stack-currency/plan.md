@@ -47,14 +47,17 @@ it with no attempt limit and a back-off of up to one hour.
 ## 3. Turn Budget
 
 `ChatModel.run(request, tools, maxSteps, signal?)` passes `abortSignal` to `generateText`.
-`runTurn()` creates `AbortSignal.timeout(TURN_TIMEOUT_MS)`, with `TURN_TIMEOUT_MS = 30_000`
-exported next to `MAX_STEPS`. The signal also goes to tool `execute` through the AI SDK, so
+`runTurn()` aborts an `AbortController` after `TURN_TIMEOUT_MS`, with `TURN_TIMEOUT_MS = 30_000`
+exported next to `MAX_STEPS`. It does not use `AbortSignal.timeout()`, because fake timers
+cannot drive it. The signal also goes to tool `execute` through the AI SDK, so
 the tools that call the network pass it on where the port allows; the ingestion pipeline is
 not cancelled mid-node, because a half-written memory is worse than a late one.
 
-On abort (`error.name === 'TimeoutError'` or `'AbortError'`):
+On abort (the turn's own signal is aborted, whatever error the SDK raised):
 
 - A save already landed: the saved confirmation with Undo, as the step-limit case does today.
+- A save is still running: wait for it, then the saved confirmation with Undo. A save that
+  fails gives the timeout reply.
 - Otherwise: a fixed reply, `That took too long. Try again or ask a shorter question.`, with
   no keyboard.
 

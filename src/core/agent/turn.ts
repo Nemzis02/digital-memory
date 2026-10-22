@@ -18,6 +18,8 @@ import { createAgentTools, type AgentToolDeps, type AgentTurn } from './tools.ts
 const log = logger.child({ module: 'agent/turn' });
 
 export const MAX_STEPS = 4;
+export const TURN_TIMEOUT_MS = 30_000;
+export const TIMEOUT_REPLY = 'That took too long. Try again or ask a shorter question.';
 
 // Telegram rejects an empty message, and a reply of only `Sources:` still has files to show.
 const SOURCED_ONLY = 'See the memories below.';
@@ -86,6 +88,25 @@ function compose(turn: AgentTurn, text: string, calls: readonly ToolCall[]): Rou
   };
 }
 
+async function timedOut(turn: AgentTurn): Promise<RouteReply> {
+  // Ingestion is not cancelled, so a save still in flight will land; wait for it to offer Undo.
+  const saved = await turn.effects.pending?.catch((error: unknown) => {
+    log.warn('save failed after the turn timed out', { error });
+
+    return undefined;
+  });
+
+  if (saved !== undefined) {
+    log.warn('turn timed out after a save', { id: saved.id });
+
+    return present({ text: savedReply(saved), keyboard: 'undo' });
+  }
+
+  log.warn('turn timed out', { ms: TURN_TIMEOUT_MS });
+
+  return present({ text: TIMEOUT_REPLY, keyboard: 'none' });
+}
+
 /** One tool-calling model turn for a text message, composed into the reply the bot renders. */
 export async function runTurn(
   deps: TurnDeps,
@@ -104,8 +125,15 @@ export async function runTurn(
     turns: toTurns(context, message),
   };
 
+  // Not `AbortSignal.timeout()`: its timer is internal to Node, so a test cannot fake it.
+  const budget = new AbortController();
+
+  const timer = setTimeout(() => {
+    budget.abort(new DOMException('The turn ran out of time', 'TimeoutError'));
+  }, TURN_TIMEOUT_MS);
+
   try {
-    const { text, calls } = await deps.model.run(request, tools, MAX_STEPS);
+    const { text, calls } = await deps.model.run(request, tools, MAX_STEPS, budget.signal);
 
     log.info('turn', {
       calls: calls.map((call) => call.name),
@@ -115,6 +143,10 @@ export async function runTurn(
 
     return present(compose(turn, text, calls));
   } catch (error) {
+    if (budget.signal.aborted) {
+      return timedOut(turn);
+    }
+
     const saved = turn.effects.saved;
 
     // The capped step's tools have already run, so a save may have landed; it keeps its Undo.
@@ -125,5 +157,7 @@ export async function runTurn(
     }
 
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }

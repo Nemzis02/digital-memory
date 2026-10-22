@@ -96,6 +96,8 @@ export interface FakeOptions {
   parents?: readonly MemoryPayload[];
   listed?: readonly MemoryPayload[];
   saved?: IngestResult;
+  /** How long `ingest` takes, on the timers a test can fake. */
+  ingestMs?: number;
 }
 
 /** A store, embeddings and pipeline that record every call and change nothing. */
@@ -157,7 +159,12 @@ export function memoryFakes(options?: FakeOptions) {
     ingest(input) {
       ingested.push(input);
 
-      return Promise.resolve(options?.saved ?? SAVED);
+      const result = options?.saved ?? SAVED;
+      const ms = options?.ingestMs;
+
+      return ms === undefined
+        ? Promise.resolve(result)
+        : new Promise((resolve) => setTimeout(() => resolve(result), ms));
     },
     undo() {
       return Promise.resolve(true);

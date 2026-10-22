@@ -47,6 +47,10 @@ what to call, sees the result, and answers or asks back.
 6. **The model port grows a tool loop.** `ChatModel` gains one method that takes tools and a
    step cap and returns the final text plus the tool calls made. The rest of core keeps calling
    `complete` and `object`. LangGraph stays the ingestion graph only, as ADR 003 decision 3 says.
+7. **A turn has 4 steps and 30 seconds.** At the step cap or the time limit, a turn whose save
+   landed, or is still running, replies with the saved confirmation and Undo; the save is not
+   cancelled. Otherwise the step cap fails the turn, and the time limit gives a fixed "took too
+   long" reply. Both values may be tuned from use. _Decided 2026-10-22._
 
 ## Consequences
 
@@ -64,7 +68,7 @@ what to call, sees the result, and answers or asks back.
 
 - Whether small talk needs a tool-less fast path on the fast model.
 - Whether `save_memory` accepts a summary the model wrote, or always re-derives one.
-- The step cap and the per-message timeout. Start at 4 steps and 30 seconds, then tune.
+- The step cap and the per-message timeout. _Decided 2026-10-22 in decision 7._
 - Tracing the loop (OpenTelemetry, Langfuse) is a separate decision. _Decided 2026-10-21 in
   ADR 005._
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationTurn } from '../conversation/context.ts';
 import type { InboundMessage } from '../ingestion/inbound.ts';
 import { savedReply } from '../ingestion/reply.ts';
@@ -23,36 +23,59 @@ import {
   TAPAS_HIT,
   type FakeOptions,
 } from './fixtures.ts';
-import { MAX_STEPS, runTurn, type TurnOptions } from './turn.ts';
+import { MAX_STEPS, runTurn, TIMEOUT_REPLY, TURN_TIMEOUT_MS, type TurnOptions } from './turn.ts';
 
 const NOW = new Date('2026-10-21T09:30:00Z');
 
-type Step = { call: string; input: unknown } | { text: string };
+type Step = { call: string; input: unknown } | { text: string } | { hang: true };
+
+/** Settles with `work`, or rejects with the abort reason first, as the SDK does. */
+function abortable<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) {
+    return work;
+  }
+
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason as Error), { once: true });
+    }),
+  ]);
+}
 
 /** Plays the model's side of the loop: validates each call against its schema, as the SDK does. */
 function scripted(steps: readonly Step[]): ChatModel & {
   requests: CompletionRequest[];
   offered: string[][];
   results: RunResult[];
+  signals: (AbortSignal | undefined)[];
 } {
   const requests: CompletionRequest[] = [];
   const offered: string[][] = [];
   const results: RunResult[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
 
   return {
     id: 'scripted',
     requests,
     offered,
     results,
+    signals,
     complete() {
       return Promise.reject(new Error('a turn only calls run()'));
     },
     object() {
       return Promise.reject(new Error('a turn only calls run()'));
     },
-    async run(request: CompletionRequest, tools: ToolSpecs, maxSteps: number) {
+    async run(
+      request: CompletionRequest,
+      tools: ToolSpecs,
+      maxSteps: number,
+      signal?: AbortSignal,
+    ) {
       requests.push(request);
       offered.push(Object.keys(tools));
+      signals.push(signal);
 
       const calls: ToolCall[] = [];
 
@@ -65,6 +88,14 @@ function scripted(steps: readonly Step[]): ChatModel & {
           return result;
         }
 
+        if ('hang' in step) {
+          await abortable(new Promise<never>(() => {}), signal);
+        }
+
+        if (!('call' in step)) {
+          continue;
+        }
+
         const spec = tools[step.call];
 
         if (spec === undefined) {
@@ -75,8 +106,14 @@ function scripted(steps: readonly Step[]): ChatModel & {
         try {
           const input = spec.input.parse(step.input);
 
-          calls.push({ name: step.call, input, output: await spec.execute(input) });
+          const output = await abortable(spec.execute(input), signal);
+
+          calls.push({ name: step.call, input, output });
         } catch (error) {
+          if (signal?.aborted === true) {
+            throw error;
+          }
+
           const message = error instanceof Error ? error.message : String(error);
 
           calls.push({ name: step.call, input: step.input, error: message });
@@ -115,6 +152,10 @@ function lastUserText(request: CompletionRequest | undefined): string | undefine
 }
 
 describe('runTurn', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('answers a question from search, attaching cited files and linking cited pages', async () => {
     const box = harness(
       [
@@ -458,5 +499,79 @@ describe('runTurn', () => {
     expect(reply).toMatchObject({ text: 'Hi! Ask me about anything you saved.', keyboard: 'none' });
     expect(lastUserText(box.model.requests[0])).toBe('hi');
     expect(box.model.results[0]?.calls).toStrictEqual([]);
+  });
+
+  it('replies that it took too long when the model hangs past the budget', async () => {
+    vi.useFakeTimers();
+
+    const box = harness([{ hang: true }]);
+    const reply = box.turn();
+
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+
+    await expect(reply).resolves.toStrictEqual({ text: TIMEOUT_REPLY, keyboard: 'none' });
+    expect(box.ingested).toStrictEqual([]);
+  });
+
+  it('still confirms a save with Undo when the budget runs out after it', async () => {
+    vi.useFakeTimers();
+
+    const box = harness([{ call: 'save_memory', input: {} }, { hang: true }]);
+    const reply = box.turn();
+
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+
+    await expect(reply).resolves.toStrictEqual({ text: savedReply(SAVED), keyboard: 'undo' });
+  });
+
+  it('waits for a save still running at the budget and confirms it with Undo', async () => {
+    vi.useFakeTimers();
+
+    const box = harness([{ call: 'save_memory', input: {} }, { text: 'Saved.' }], {
+      ingestMs: TURN_TIMEOUT_MS + 5_000,
+    });
+
+    let settled = false;
+
+    const reply = box.turn().finally(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(reply).resolves.toStrictEqual({ text: savedReply(SAVED), keyboard: 'undo' });
+    expect(box.ingested).toHaveLength(1);
+  });
+
+  it('replies that it took too long when the save still running at the budget fails', async () => {
+    vi.useFakeTimers();
+
+    const box = harness([{ call: 'save_memory', input: {} }, { text: 'Saved.' }]);
+
+    box.pipeline.ingest = () =>
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('index unavailable')), TURN_TIMEOUT_MS + 5_000);
+      });
+
+    const reply = box.turn();
+
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS + 5_000);
+
+    await expect(reply).resolves.toStrictEqual({ text: TIMEOUT_REPLY, keyboard: 'none' });
+  });
+
+  it('hands the model a budget signal and leaves no timer behind', async () => {
+    vi.useFakeTimers();
+
+    const box = harness([{ text: 'Hi!' }]);
+
+    await box.turn();
+
+    expect(box.model.signals[0]).toBeInstanceOf(AbortSignal);
+    expect(box.model.signals[0]?.aborted).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
