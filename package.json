@@ -5,7 +5,7 @@
   "description": "Cloud-native personal second brain: Telegram ingestion, hybrid RAG, MCP access.",
   "type": "module",
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "node --env-file=.env --watch src/index.ts",
