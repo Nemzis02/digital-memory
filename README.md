@@ -9,8 +9,8 @@
 - **Multi-modal Telegram Ingestion:** Ingests photos, PDF documents, URLs, notes, and voice messages in real time via `grammY`.
 - **Hybrid RAG Pipeline:** Combines dense vector search and sparse (BM25) indexing in **Qdrant Cloud** with metadata auto-tagging (`category`, `kind`, `location`, `tags`) and parent-child chunking.
 - **Private Cloud Storage:** Secure asset storage in **Cloudflare R2** with ephemeral Pre-signed URLs (no public links).
-- **Durable State:** **PostgreSQL** via **Drizzle ORM** for OAuth2 sessions, tokens and user metadata, and as the LangGraph checkpoint store.
-- **IDE Access via MCP:** Native connection to Cursor/Windsurf via Server-Sent Events (SSE), protected by **Telegram OAuth2 SSO**.
+- **Durable State:** **PostgreSQL** via **Drizzle ORM** for user metadata, OAuth 2.1 clients and tokens (Phase 2), and as the LangGraph checkpoint store.
+- **IDE Access via MCP (Phase 2, planned):** Cursor, Claude and other MCP clients over Streamable HTTP, protected by **OAuth 2.1** with Telegram Login.
 - **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)).
 - **Ingestion Graph:** Powered by **LangGraph** for multi-step OCR and web scraping.
 
@@ -24,7 +24,7 @@
 - **Models:** Vercel AI SDK (`ai`) over `@ai-sdk/google` (`gemini-3.8-flash`, `gemini-embedding-2`) and `@ai-sdk/anthropic` (`claude-sonnet-5-5`)
 - **Object Storage:** Cloudflare R2 (`@aws-sdk/client-s3`)
 - **Article Extraction:** `@mozilla/readability` over `linkedom` for saved links
-- **Protocol:** `@modelcontextprotocol/sdk` (MCP)
+- **Planned (Phase 2):** `@modelcontextprotocol/sdk` (MCP)
 
 ---
 

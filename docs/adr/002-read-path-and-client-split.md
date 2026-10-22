@@ -52,6 +52,10 @@ Phase 2, and the only question was whether to pretend otherwise until then.
    `source_ref` makes resuming safe, and a replayed write overwrites its own point.
 7. **One long-running Node service.** The Telegram webhook, the MCP SSE endpoint and the OAuth
    routes share an origin and a process. Serverless is ruled out by SSE's long-lived connection.
+   _Amended 2026-10-22:_ the MCP endpoint is Streamable HTTP (ADR 001 decision 3). MCP spec
+   2026-07-28 removes sessions, so the transport no longer rules out serverless. One process
+   stays: the webhook handlers run the ingestion graph and the model turn in this process, and
+   the OAuth issuer, the MCP resource and the webhook share one origin.
 
 ## Open
 

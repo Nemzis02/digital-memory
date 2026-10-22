@@ -4,7 +4,7 @@ Blocked on nothing. Answers the October 2026 stack audit: MCP documented over th
 SSE transport, MCP listed as built, `engines.node` behind `.nvmrc`, no Telegram 429 retry, no
 turn timeout, no release process, no license.
 
-- [ ] Task 1: MCP wording in AGENTS.md, ADR 001 decision 3, ADR 002 decision 7, the PORT
+- [x] Task 1: MCP wording in AGENTS.md, ADR 001 decision 3, ADR 002 decision 7, the PORT
       comment in `src/config/env.ts` and the README, per plan section 1. Check the current MCP
       spec revision first. No code change.
 - [ ] Task 2: `engines.node` to `>=24.0.0`. `npm update`, then lint, typecheck, test, build.

@@ -18,22 +18,23 @@ LICENSE, SECURITY.md
 
 ## 1. MCP Wording
 
-The MCP TypeScript SDK marks `SSEServerTransport` deprecated. Streamable HTTP (spec 2025-03-26
-and later) is the transport. The MCP authorization spec (2025-06-18 and later) makes the server
-an OAuth 2.1 resource server: PKCE with S256, protected resource metadata at
-`/.well-known/oauth-protected-resource` (RFC 9728), and Dynamic Client Registration (RFC 7591)
-for clients such as Claude and Cursor. The Drizzle schema already has the PKCE columns.
+The current MCP spec revision, checked on 2026-10-22, is 2026-07-28. Streamable HTTP is the
+transport, and HTTP+SSE is deprecated. That revision removes sessions, the `initialize`
+handshake and SSE resumability. The authorization spec makes the server an OAuth 2.1 resource
+server: PKCE with S256, protected resource metadata at `/.well-known/oauth-protected-resource`
+(RFC 9728), and audience-bound tokens (RFC 8707). Clients such as Claude and Cursor register
+with a Client ID Metadata Document; Dynamic Client Registration (RFC 7591) is deprecated and
+only a fallback. The Drizzle schema already has the PKCE columns.
 
 - AGENTS.md rule 3 becomes: the MCP endpoint uses Streamable HTTP and OAuth 2.1 Authorization
   Code with PKCE, where Telegram Login is the identity provider behind `/oauth/authorize`.
-- ADR 001 decision 3 gets an `_Amended 2026-10-…:_` paragraph in the style ADR 002 uses. ADR 002
-  decision 7 ("MCP SSE endpoint", "SSE's long-lived connection") gets the same amendment: the
-  single-process reason stays, because Streamable HTTP can still hold a stream open.
-- README: MCP feature bullet says Phase 2. Tech Stack keeps `@modelcontextprotocol/sdk` under
-  "Planned". Run the `readme-updater` skill.
-- Before the amendment, check the current MCP spec revision at modelcontextprotocol.io. One
-  source reports a 2026-07-28 revision that removes sessions. Write the revision date you
-  checked into the amendment.
+- ADR 001 decision 3 gets an `_Amended 2026-10-22:_` paragraph in the style ADR 002 uses, with
+  the spec revision it was checked against. ADR 002 decision 7 ("MCP SSE endpoint", "SSE's
+  long-lived connection") gets an amendment too: without sessions the transport no longer rules
+  out serverless, and one process stays because the webhook handlers run the ingestion graph
+  and the model turn in-process, on one origin with the OAuth routes.
+- README: MCP feature bullet says Phase 2. Tech Stack lists `@modelcontextprotocol/sdk` under
+  "Planned (Phase 2)".
 
 ## 2. Telegram Flood Control
 

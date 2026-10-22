@@ -64,12 +64,12 @@ non-conforming message cannot land.
 - **Orchestration:** `@langchain/langgraph`
 - **Vector Storage & Search:** Qdrant Cloud (Hybrid Search: Dense Vectors + Sparse BM25)
 - **Object Storage:** Cloudflare R2 (S3 API via `@aws-sdk/client-s3`)
-- **MCP Framework:** `@modelcontextprotocol/sdk`
+- **MCP Framework:** `@modelcontextprotocol/sdk` (Phase 2, not yet installed)
 - **Primary LLM Routing:** Gemini 3.8 Flash (Ingestion/Fast) & Claude Sonnet 5.5 / GPT-5.6 Sol (Reasoning/MCP)
 
 ## Non-Negotiable Rules & Security
 
 1. **Security:** Cloudflare R2 bucket MUST be strictly private. NEVER generate public links. All file access must go via Pre-signed URLs with a TTL <= 15 minutes or proxied streams.
 2. **Architecture:** Core logic MUST reside in `src/core/`. Neither `src/bot/` nor `src/mcp/` should implement RAG logic directly.
-3. **Authentication:** MCP SSE transport MUST use Telegram OAuth2 Authorization Code Flow (`/oauth/authorize`).
+3. **Authentication:** The MCP endpoint (Phase 2) MUST use Streamable HTTP and OAuth 2.1 Authorization Code with PKCE (S256). Telegram Login is the identity provider behind `/oauth/authorize`.
 4. **SDD Workflow:** Always check `specs/` before writing features. Update `MEMORY.md` whenever hitting edge cases or library quirks.

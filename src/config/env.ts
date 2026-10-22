@@ -11,7 +11,7 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 
-    // One process serves the Telegram webhook, the MCP SSE endpoint, and the OAuth routes.
+    // One process serves the Telegram webhook, the MCP endpoint, and the OAuth routes.
     PORT: z.coerce.number().int().positive().max(65535).default(8080),
     // Absent means long polling; present means the bot is reachable and must be authenticated.
     PUBLIC_URL: z.url('PUBLIC_URL must be a valid URL').optional(),
