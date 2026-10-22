@@ -11,15 +11,15 @@
 - **Private Cloud Storage:** Secure asset storage in **Cloudflare R2** with ephemeral Pre-signed URLs (no public links).
 - **Durable State:** **PostgreSQL** via **Drizzle ORM** for user metadata, OAuth 2.1 clients and tokens (Phase 2), and as the LangGraph checkpoint store.
 - **IDE Access via MCP (Phase 2, planned):** Cursor, Claude and other MCP clients over Streamable HTTP, protected by **OAuth 2.1** with Telegram Login.
-- **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)).
+- **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once, within 4 steps and 30 seconds. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)).
 - **Ingestion Graph:** Powered by **LangGraph** for multi-step OCR and web scraping.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Runtime & Language:** Node.js (ESM), TypeScript
-- **Telegram Framework:** `grammY`, with `md-to-telegram` turning an answer's Markdown into Telegram HTML
+- **Runtime & Language:** Node.js 24 (ESM), TypeScript
+- **Telegram Framework:** `grammY`, with `@grammyjs/auto-retry` retrying flood control (429) and `md-to-telegram` turning an answer's Markdown into Telegram HTML
 - **Orchestration & RAG:** `@langchain/langgraph` with `@langchain/langgraph-checkpoint-postgres`, Qdrant Cloud
 - **Models:** Vercel AI SDK (`ai`) over `@ai-sdk/google` (`gemini-3.8-flash`, `gemini-embedding-2`) and `@ai-sdk/anthropic` (`claude-sonnet-5-5`)
 - **Object Storage:** Cloudflare R2 (`@aws-sdk/client-s3`)
@@ -71,7 +71,7 @@ digital-memory/
 │   ├── 001-tg-ingestion/      # Phase 1: Ingestion Pipeline
 │   ├── 002-retrieval/         # Phase 1: Read path (search, recall, forget)
 │   ├── 003-agentic-read-path/ # Phase 1: One tool-calling turn per message
-│   ├── 004-stack-currency/    # MCP wording, turn timeout, Telegram retry, releases
+│   ├── 004-stack-currency/    # MCP wording, turn timeout, Telegram retry
 │   ├── 005-observability/     # Langfuse tracing of model calls
 │   ├── 006-evals/             # Golden set, recall and tool-choice scores
 │   ├── 007-sparse-bm25/       # Real BM25 sparse vectors

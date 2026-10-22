@@ -11,9 +11,6 @@ src/bot/bot.ts                    # auto-retry transformer on bot.api.config
 src/config/env.ts                 # PORT comment: "MCP SSE endpoint" -> "MCP endpoint"
 src/core/llm/router.ts            # run() accepts an AbortSignal
 src/core/agent/turn.ts            # 30 s budget, timeout reply
-.github/workflows/release.yml     # release-please
-release-please-config.json, .release-please-manifest.json
-LICENSE, SECURITY.md
 ```
 
 ## 1. MCP Wording
@@ -64,22 +61,7 @@ On abort (the turn's own signal is aborted, whatever error the SDK raised):
 The timeout reply is a constant, not model text. ADR 004 Open lists the 30 s value; move it
 from Open to a decision line in ADR 004 when this ships.
 
-## 4. Releases
-
-release-please (`googleapis/release-please-action`, current major) with `release-type: node`
-on push to `master`. It opens a release PR that bumps `package.json` and writes
-`CHANGELOG.md`. Merging it tags `v0.x.y`. No npm publish: the package is private.
-Permissions: `contents: write`, `pull-requests: write`, on this workflow only. The CI workflow
-keeps `contents: read`.
-
-## 5. License and Security Policy
-
-`LICENSE`: MIT, holder "Kirill Yerin", year 2026. `SECURITY.md`: supported version is the
-latest `master`; report through GitHub private vulnerability reporting; list what is in scope
-(bot auth, R2 access, OAuth). Enable private vulnerability reporting in the repository
-settings by hand; the agent states this in its summary, it cannot do it.
-
-## 6. Tests
+## 4. Tests
 
 - `router.test.ts`: `run()` with an already-aborted signal rejects with the abort error and
   calls no tool.
@@ -89,7 +71,7 @@ settings by hand; the agent states this in its summary, it cannot do it.
   transport sends once more and succeeds. A 429 that asks for more than 30 s, and a network
   error, each fail after one call.
 
-## 7. Dependencies
+## 5. Dependencies
 
-`@grammyjs/auto-retry` (runtime). release-please is an Action, not a package.
+`@grammyjs/auto-retry` (runtime).
 `npm update` for the minor drift that `npm outdated` shows; no major bumps.

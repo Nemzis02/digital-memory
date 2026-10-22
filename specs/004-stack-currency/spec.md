@@ -5,8 +5,7 @@
 Bring the documents and the small runtime guards in line with production practice in October
 2026, before new features are added. The documents describe MCP over a transport the SDK has
 deprecated, and list a package that is not installed. The bot has no retry on Telegram flood
-control and no time limit on a model turn. The repository has no release process, no license
-and no security policy.
+control and no time limit on a model turn.
 
 ## User Stories
 
@@ -18,12 +17,10 @@ and no security policy.
   the answer took too long, not silence.
 - As a user, a turn that saved a memory and then timed out still shows the saved confirmation
   with Undo, because the memory exists.
-- As the maintainer, I merge to `master` and a release PR collects the Conventional Commits
-  into a CHANGELOG and a version bump.
-- As a reader of the public repository, I find a license and a way to report a vulnerability.
 
 ## Out of Scope
 
 Implementing MCP (Phase 2). Tracing (spec 005). Node 26 and `@types/node` 26: Node 26 enters
 Active LTS on 2026-10-28, and the bump is a separate one-line change after that date.
-TypeScript 7: blocked by the `typescript-eslint` peer range, see MEMORY.md.
+TypeScript 7: blocked by the `typescript-eslint` peer range, see MEMORY.md. A release process,
+a license and a security policy: not needed while this is a personal project.
