@@ -78,7 +78,12 @@ export interface ChatModel {
   readonly id: string;
   complete(request: CompletionRequest): Promise<string>;
   object<T>(request: CompletionRequest, schema: ZodType<T>): Promise<T>;
-  run(request: CompletionRequest, tools: ToolSpecs, maxSteps: number): Promise<RunResult>;
+  run(
+    request: CompletionRequest,
+    tools: ToolSpecs,
+    maxSteps: number,
+    signal?: AbortSignal,
+  ): Promise<RunResult>;
 }
 
 export interface LlmRouter {
@@ -206,7 +211,7 @@ function chatModel(spec: ModelSpec): ChatModel {
 
       return output;
     },
-    async run(request, tools, maxSteps) {
+    async run(request, tools, maxSteps, signal) {
       if (!Number.isInteger(maxSteps) || maxSteps < 1) {
         throw new TypeError('run() needs a positive integer step cap');
       }
@@ -215,6 +220,7 @@ function chatModel(spec: ModelSpec): ChatModel {
         ...call(request),
         tools: toToolSet(tools),
         stopWhen: isStepCount(maxSteps),
+        ...(signal === undefined ? {} : { abortSignal: signal }),
       });
 
       const calls = recordedCalls(steps);

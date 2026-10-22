@@ -9,7 +9,7 @@ turn timeout, no release process, no license.
       spec revision first. No code change.
 - [x] Task 2: `engines.node` to `>=24.0.0`. `npm update`, then lint, typecheck, test, build.
 - [x] Task 3: `@grammyjs/auto-retry` in `createBot()`, with the bot test.
-- [ ] Task 4: `abortSignal` on `ChatModel.run()`, router test.
+- [x] Task 4: `abortSignal` on `ChatModel.run()`, router test.
 - [ ] Task 5: 30 s budget in `runTurn()`, timeout reply, saved-then-timeout case, turn tests.
       Move the timeout from ADR 004 Open to a decision.
 - [ ] Task 6: release-please workflow and config files. `LICENSE` and `SECURITY.md`.

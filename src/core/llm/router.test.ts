@@ -534,6 +534,35 @@ describe('createRouter', () => {
     expect(search.execute).toHaveBeenCalledTimes(2);
   });
 
+  it('stops at an aborted signal and runs no tool', async () => {
+    const strong = new MockLanguageModelV4({
+      provider: 'anthropic',
+      modelId: STRONG_MODEL,
+      doGenerate: async ({ abortSignal }) => {
+        abortSignal?.throwIfAborted();
+
+        return calling('search_memory', { query: 'x' });
+      },
+    });
+
+    gate.strong = strong;
+
+    const search = searchTool(() => Promise.resolve([]));
+    const controller = new AbortController();
+
+    controller.abort();
+
+    await expect(
+      createRouter(withStrong)
+        .model('strong')
+        .run(ask('hello'), { search_memory: search.spec }, 4, controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(search.execute).not.toHaveBeenCalled();
+    expect(strong.doGenerateCalls).toHaveLength(1);
+    expect(strong.doGenerateCalls[0]?.abortSignal).toBe(controller.signal);
+  });
+
   it('reports a failing tool back to the model and records the error', async () => {
     const strong = scripted([
       calling('search_memory', { query: 'tapas' }),
