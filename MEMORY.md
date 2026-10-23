@@ -4,6 +4,12 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-23 — Langfuse `mask` never sees the AI SDK span attributes
+
+`LangfuseSpanProcessor`'s `mask` covers only `langfuse.*` keys; prompts and tool data sit in
+`gen_ai.*` and `ai.*`. The AI SDK integration also keeps the tracer it was built with, so it
+cannot follow a provider restart unless it is given a tracer that resolves on each call.
+
 ## 2026-10-23 — OpenTelemetry packages must stay on the 2.x line until Langfuse moves
 
 `@langfuse/otel` 6.0.2 peers on OTel JS 2.x, but its exporter range admits 0.300 (3.x, out
@@ -27,11 +33,9 @@ An S3 `GetObject` body is an `IncomingMessage`, whose `url` is `''`, so grammY f
 fails with "Only absolute URLs are supported" before any request is sent. Wrap the body with
 `Readable.toWeb` first. Transformer-level bot tests never serialise `InputFile` and miss this.
 
-## 2026-10-12 — R2 via the AWS SDK
+## 2026-10-12 — A new R2 account can fail TLS before any client option matters
 
-Use `forcePathStyle`: virtual-hosted `<bucket>.<account>.r2…` is outside the account certificate.
-Set both checksum modes to `WHEN_REQUIRED`; the SDK default sends headers R2 rejects. A new
-account can also return TLS alert 40 with no certificate on the account host itself — the
+A new account can return TLS alert 40 with no certificate on the account host itself — the
 endpoint cert is not provisioned yet, and no client option fixes that.
 
 ## 2026-10-12 — A LangGraph node may not share a name with a state channel
@@ -62,12 +66,6 @@ Node's type stripping does not remap `./env.js` to `./env.ts`, so the traditiona
 specifier dies at runtime with `ERR_MODULE_NOT_FOUND` while `tsc --noEmit` stays green — CI
 will not catch it. `allowImportingTsExtensions` + `rewriteRelativeImportExtensions` let source
 say `./env.ts` and still emit `./env.js`.
-
-### typescript-eslint: root configs need `allowDefaultProject`
-
-`rootDir: src` leaves every root-level `*.config.ts` outside the project, so typed linting
-fails with "was not found by the project service". Adding it to `include` would break
-`rootDir`; list it in `parserOptions.projectService.allowDefaultProject` instead.
 
 ### gitleaks flags Telegram tokens with exactly 34 characters after `:A`
 

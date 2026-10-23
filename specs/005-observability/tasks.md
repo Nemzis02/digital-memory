@@ -9,6 +9,6 @@ decision. Answers the stack audit: no tracing of the agent loop.
       `src/index.ts` startup and shutdown. Read the current integration docs first.
 - [x] Task 3: `functionId` and attributes through the router and `runTurn()`, the outcome
       attribute, the hashed chat ref.
-- [ ] Task 4: Masking and the in-memory exporter tests.
+- [x] Task 4: Masking and the in-memory exporter tests.
 - [ ] Task 5: Live check in the Langfuse UI. Update README (stack, env) with `readme-updater`.
       Add the Dependabot group. Run `security-review`, since `env.ts` changed.

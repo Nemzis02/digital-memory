@@ -1,13 +1,13 @@
 import { diag, trace } from '@opentelemetry/api';
-import { ExportResultCode } from '@opentelemetry/core';
-import type { ExportResult } from '@opentelemetry/core';
-import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
+import type { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { LangfuseVercelAiSdkIntegration } from '@langfuse/vercel-ai-sdk';
 import { registerTelemetry } from 'ai';
 import type * as Ai from 'ai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseEnv } from '../../config/env.ts';
+import { REDACTED, resetSecretsCache } from '../logging/redact.ts';
 import { hashRef } from './attributes.ts';
+import { RecordingExporter } from './fixtures.ts';
 import { startTelemetry, stopTelemetry, traceTurn } from './telemetry.ts';
 
 vi.mock('ai', async (importOriginal) => ({
@@ -35,19 +35,6 @@ const withKeys = parseEnv({
   LANGFUSE_PUBLIC_KEY: 'pk-lf-test',
   LANGFUSE_SECRET_KEY: 'sk-lf-test',
 });
-
-class RecordingExporter implements SpanExporter {
-  readonly spans: ReadableSpan[] = [];
-
-  export(spans: ReadableSpan[], done: (result: ExportResult) => void): void {
-    this.spans.push(...spans);
-    done({ code: ExportResultCode.SUCCESS });
-  }
-
-  shutdown(): Promise<void> {
-    return Promise.resolve();
-  }
-}
 
 function emitSpan(name: string): void {
   trace.getTracer('ai').startSpan(name).end();
@@ -80,6 +67,7 @@ describe('telemetry', () => {
     await stopTelemetry();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    resetSecretsCache();
   });
 
   it('registers nothing and records no span without the Langfuse keys', () => {
@@ -252,6 +240,28 @@ describe('telemetry', () => {
 
     expect(exported(exporter, 'turn').attributes).toMatchObject({
       'langfuse.trace.metadata.outcome': JSON.stringify('step-limit'),
+    });
+  });
+
+  it('masks a secret in an AI SDK attribute before the span is exported', async () => {
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', RAW.TELEGRAM_BOT_TOKEN);
+    resetSecretsCache();
+
+    const exporter = new RecordingExporter();
+
+    startTelemetry(withKeys, { exporter });
+
+    trace
+      .getTracer('ai')
+      .startSpan('invoke_agent claude-sonnet-5-5', {
+        attributes: { 'gen_ai.input.messages': `my token is ${RAW.TELEGRAM_BOT_TOKEN}` },
+      })
+      .end();
+
+    await stopTelemetry();
+
+    expect(exported(exporter, 'invoke_agent claude-sonnet-5-5').attributes).toMatchObject({
+      'gen_ai.input.messages': `my token is ${REDACTED}`,
     });
   });
 });

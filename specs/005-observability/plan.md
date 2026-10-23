@@ -6,7 +6,11 @@
 src/core/telemetry/
 ├── telemetry.ts        # startTelemetry(env), stopTelemetry(), traceTurn(); the only Langfuse/OTel imports
 ├── attributes.ts       # turnAttributes(), hashRef(), the turn outcomes; no Langfuse/OTel imports
-└── telemetry.test.ts
+├── masking.ts          # MaskingSpanProcessor: maskSecrets over every span attribute
+├── fixtures.ts         # RecordingExporter for the tests; not built
+├── telemetry.test.ts
+├── masking.test.ts
+└── trace-tree.test.ts  # a real runTurn() through the AI SDK integration
 src/config/env.ts       # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_BASE_URL (optional)
 src/index.ts            # startTelemetry() first, stopTelemetry() in shutdown()
 src/core/llm/router.ts  # per-call telemetry metadata (functionId, attributes)
@@ -51,16 +55,25 @@ metadata. A turn that throws without an outcome records `error`.
 
 Prompts and memory text are sent (ADR 005 decision 4). Attribute values pass through
 `maskSecrets` from `src/core/logging/redact.ts`, so a token pasted into a message is masked in
-the trace as in the log. Add a test that a bot-token-shaped string in the user message does
-not reach the exported span. Use an in-memory span exporter from the OpenTelemetry SDK for
-this test.
+the trace as in the log.
+
+The `mask` option of `LangfuseSpanProcessor` is not used: it sees only the `langfuse.*` keys,
+and the AI SDK writes prompts and tool data to `gen_ai.*` and `ai.*`. A `MaskingSpanProcessor`
+masks every string attribute, event attribute and status message in `onEnding`, which runs
+before any processor's `onEnd`. It does not use `redactValue`, whose key filter would blank the token counts.
+
+The tests record spans with their own exporter, not the SDK `InMemorySpanExporter`, which
+empties its spans on shutdown.
 
 ## 4. Tests
 
 - No keys: `startTelemetry` registers nothing; the router calls run as before.
 - With an in-memory exporter: one scripted turn produces one root span with the attributes of
   section 2, and child spans per tool call.
-- Masking: the case in section 3.
+- Masking: a bot token in the user message of a real `runTurn()` does not reach any exported
+  span, and the token counts stay.
+- Restart: the AI SDK integration is registered once, so it gets a tracer that resolves the
+  current provider on each call; the masking test runs a second turn after a restart.
 - Live check, by hand: one message through `npm run dev` with real keys, then the trace in the
   Langfuse UI. Note the result in the task.
 

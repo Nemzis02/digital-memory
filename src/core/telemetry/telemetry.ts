@@ -6,14 +6,14 @@ import {
 } from '@langfuse/tracing';
 import { LangfuseVercelAiSdkIntegration } from '@langfuse/vercel-ai-sdk';
 import { context, diag, DiagLogLevel, propagation, trace } from '@opentelemetry/api';
-import type { DiagLogger } from '@opentelemetry/api';
+import type { DiagLogger, Tracer } from '@opentelemetry/api';
 import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { registerTelemetry } from 'ai';
 import type { Env } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
-import { maskSecrets, redactValue } from '../logging/redact.ts';
 import { turnAttributes, type TurnIdentity, type TurnOutcome } from './attributes.ts';
+import { MaskingSpanProcessor } from './masking.ts';
 
 const log = logger.child({ module: 'telemetry' });
 
@@ -35,8 +35,11 @@ const diagLogger: DiagLogger = {
   verbose: () => undefined,
 };
 
-const mask = ({ data }: { data: unknown }): unknown =>
-  typeof data === 'string' ? maskSecrets(data) : redactValue(data);
+const currentTracer: Tracer = {
+  startSpan: (...args) => trace.getTracer('gen_ai').startSpan(...args),
+  startActiveSpan: ((...args: Parameters<Tracer['startActiveSpan']>) =>
+    trace.getTracer('gen_ai').startActiveSpan(...args)) as Tracer['startActiveSpan'],
+};
 
 let provider: NodeTracerProvider | undefined;
 
@@ -58,16 +61,18 @@ export function startTelemetry(env: Env, options: TelemetryOptions = {}): boolea
     secretKey,
     baseUrl: env.LANGFUSE_BASE_URL,
     environment: env.NODE_ENV,
-    mask,
     ...(options.exporter === undefined ? {} : { exporter: options.exporter }),
   });
 
-  provider = new NodeTracerProvider({ spanProcessors: [processor] });
+  provider = new NodeTracerProvider({
+    spanProcessors: [new MaskingSpanProcessor(), processor],
+  });
+
   provider.register();
   diag.setLogger(diagLogger, DiagLogLevel.WARN);
 
   if (!integrationRegistered) {
-    registerTelemetry(new LangfuseVercelAiSdkIntegration());
+    registerTelemetry(new LangfuseVercelAiSdkIntegration({ tracer: currentTracer }));
     integrationRegistered = true;
   }
 

@@ -1,17 +1,17 @@
 import type { LanguageModelV4GenerateResult } from '@ai-sdk/provider';
-import { ExportResultCode } from '@opentelemetry/core';
-import type { ExportResult } from '@opentelemetry/core';
-import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
+import type { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from 'ai/test';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseEnv } from '../../config/env.ts';
 import { memoryFakes, MESSAGE } from '../agent/fixtures.ts';
 import { runTurn } from '../agent/turn.ts';
 import { createEmbeddings, EMBEDDING_MODEL } from '../llm/embeddings.ts';
 import { createRouter, FAST_MODEL, STRONG_MODEL } from '../llm/router.ts';
+import { REDACTED, resetSecretsCache } from '../logging/redact.ts';
 import { createIngestionPipeline } from '../pipeline/graph.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import { DENSE_VECTOR_SIZE } from '../vector/vector-store.ts';
+import { RecordingExporter } from './fixtures.ts';
 import { startTelemetry, stopTelemetry } from './telemetry.ts';
 
 const usage: LanguageModelV4GenerateResult['usage'] = {
@@ -43,8 +43,10 @@ vi.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: () => () => models.strong,
 }));
 
+const BOT_TOKEN = '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // gitleaks:allow
+
 const env = parseEnv({
-  TELEGRAM_BOT_TOKEN: '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // gitleaks:allow
+  TELEGRAM_BOT_TOKEN: BOT_TOKEN,
   TELEGRAM_ADMIN_ID: '123456789',
   DATABASE_URL: 'postgresql://digital_memory:pw@localhost:5432/digital_memory',
   QDRANT_URL: 'https://example.cloud.qdrant.io:6333',
@@ -58,19 +60,6 @@ const env = parseEnv({
   LANGFUSE_PUBLIC_KEY: 'pk-lf-test',
   LANGFUSE_SECRET_KEY: 'sk-lf-test',
 });
-
-class RecordingExporter implements SpanExporter {
-  readonly spans: ReadableSpan[] = [];
-
-  export(spans: ReadableSpan[], done: (result: ExportResult) => void): void {
-    this.spans.push(...spans);
-    done({ code: ExportResultCode.SUCCESS });
-  }
-
-  shutdown(): Promise<void> {
-    return Promise.resolve();
-  }
-}
 
 const storage: ObjectStorage = {
   upload: (input) =>
@@ -110,15 +99,19 @@ function only(spans: readonly ReadableSpan[], match: (span: ReadableSpan) => boo
   return found[0] as ReadableSpan;
 }
 
-describe('trace of a turn that saves', () => {
+describe('trace of a turn', () => {
   beforeEach(() => {
     vi.stubEnv('LOG_LEVEL', 'warn');
   });
 
   afterEach(async () => {
     await stopTelemetry();
-    globalThis.AI_SDK_TELEMETRY_INTEGRATIONS = undefined;
     vi.unstubAllEnvs();
+    resetSecretsCache();
+  });
+
+  afterAll(() => {
+    globalThis.AI_SDK_TELEMETRY_INTEGRATIONS = undefined;
   });
 
   it('nests the save_memory ingestion under the tool span of the one turn trace', async () => {
@@ -209,5 +202,39 @@ describe('trace of a turn that saves', () => {
     for (const span of embedded) {
       expect(lineage(spans, span)).toContain(tool);
     }
+  });
+
+  it('exports no bot token that the user pasted into the message', async () => {
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', BOT_TOKEN);
+    resetSecretsCache();
+
+    models.strong = new MockLanguageModelV4({
+      provider: 'anthropic',
+      modelId: STRONG_MODEL,
+      doGenerate: [text('Noted.')],
+    });
+
+    const exporter = new RecordingExporter();
+
+    startTelemetry(env, { exporter });
+
+    const { store, embeddings, pipeline } = memoryFakes();
+
+    await runTurn(
+      { model: createRouter(env).model('strong'), store, embeddings, pipeline, source: 'telegram' },
+      { ...MESSAGE, text: `my bot token is ${BOT_TOKEN}` },
+      [],
+    );
+
+    await stopTelemetry();
+
+    const { spans } = exporter;
+
+    expect(JSON.stringify(spans.map((span) => span.attributes))).not.toContain(BOT_TOKEN);
+
+    const call = only(spans, (span) => span.name === `invoke_agent ${STRONG_MODEL}`);
+
+    expect(call.attributes['gen_ai.input.messages']).toContain(`my bot token is ${REDACTED}`);
+    expect(call.attributes['gen_ai.usage.input_tokens']).toBe(3);
   });
 });
