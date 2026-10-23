@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TurnOptions } from '../agent/turn.ts';
 import type { ConversationLog } from '../conversation/store.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
@@ -6,9 +6,31 @@ import type { AppendExchange } from '../conversation/store.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
 import type { IngestionInput } from '../pipeline/state.ts';
 import { NOTHING_FOUND } from '../retrieval/answer.ts';
+import type { TurnIdentity, TurnOutcome } from '../telemetry/attributes.ts';
 import type { InboundMessage } from './inbound.ts';
 import type { RouteReply } from './reply.ts';
 import { dispatch, forgetResult, type RouteDeps } from './route.ts';
+
+const traced = vi.hoisted(() => ({
+  turns: [] as { identity: TurnIdentity; outcomes: TurnOutcome[] }[],
+}));
+
+vi.mock('../telemetry/telemetry.ts', () => ({
+  traceTurn: async (
+    identity: TurnIdentity,
+    run: (setOutcome: (outcome: TurnOutcome) => void) => Promise<unknown>,
+  ) => {
+    const outcomes: TurnOutcome[] = [];
+
+    traced.turns.push({ identity, outcomes });
+
+    return run((outcome) => outcomes.push(outcome));
+  },
+}));
+
+afterEach(() => {
+  traced.turns.length = 0;
+});
 
 function message(text: string, replyToSourceRef?: string): InboundMessage {
   return {
@@ -173,6 +195,10 @@ describe('dispatch', () => {
     expect(box.ingested).toStrictEqual([{ source: 'telegram', message: photo('   ') }]);
     expect(box.turns).toStrictEqual([]);
     expect(box.conversations.exchanges[0]?.user.body).toBe('[photo]');
+
+    expect(traced.turns).toStrictEqual([
+      { identity: { source: 'telegram', chatRef: '7', userRef: '42' }, outcomes: ['saved'] },
+    ]);
   });
 
   it('runs a captioned file through the turn', async () => {

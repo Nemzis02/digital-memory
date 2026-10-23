@@ -5,11 +5,13 @@ import { savedReply } from '../ingestion/reply.ts';
 import type {
   ChatModel,
   CompletionRequest,
+  RunOptions,
   RunResult,
   ToolCall,
   ToolSpecs,
 } from '../llm/router.ts';
 import { StepLimitError } from '../llm/router.ts';
+import type { TurnIdentity, TurnOutcome } from '../telemetry/attributes.ts';
 import {
   DENTIST_FILE,
   DENTIST_HIT,
@@ -26,6 +28,27 @@ import {
 import { MAX_STEPS, runTurn, TIMEOUT_REPLY, TURN_TIMEOUT_MS, type TurnOptions } from './turn.ts';
 
 const NOW = new Date('2026-10-21T09:30:00Z');
+
+const traced = vi.hoisted(() => ({
+  turns: [] as { identity: TurnIdentity; outcomes: TurnOutcome[] }[],
+}));
+
+vi.mock('../telemetry/telemetry.ts', () => ({
+  traceTurn: async (
+    identity: TurnIdentity,
+    run: (setOutcome: (outcome: TurnOutcome) => void) => Promise<unknown>,
+  ) => {
+    const outcomes: TurnOutcome[] = [];
+
+    traced.turns.push({ identity, outcomes });
+
+    return run((outcome) => outcomes.push(outcome));
+  },
+}));
+
+function outcomes(): TurnOutcome[] | undefined {
+  return traced.turns.at(-1)?.outcomes;
+}
 
 type Step = { call: string; input: unknown } | { text: string } | { hang: true };
 
@@ -49,11 +72,13 @@ function scripted(steps: readonly Step[]): ChatModel & {
   offered: string[][];
   results: RunResult[];
   signals: (AbortSignal | undefined)[];
+  functionIds: (string | undefined)[];
 } {
   const requests: CompletionRequest[] = [];
   const offered: string[][] = [];
   const results: RunResult[] = [];
   const signals: (AbortSignal | undefined)[] = [];
+  const functionIds: (string | undefined)[] = [];
 
   return {
     id: 'scripted',
@@ -61,6 +86,7 @@ function scripted(steps: readonly Step[]): ChatModel & {
     offered,
     results,
     signals,
+    functionIds,
     complete() {
       return Promise.reject(new Error('a turn only calls run()'));
     },
@@ -71,11 +97,14 @@ function scripted(steps: readonly Step[]): ChatModel & {
       request: CompletionRequest,
       tools: ToolSpecs,
       maxSteps: number,
-      signal?: AbortSignal,
+      options?: RunOptions,
     ) {
+      const signal = options?.signal;
+
       requests.push(request);
       offered.push(Object.keys(tools));
       signals.push(signal);
+      functionIds.push(options?.functionId);
 
       const calls: ToolCall[] = [];
 
@@ -154,6 +183,7 @@ function lastUserText(request: CompletionRequest | undefined): string | undefine
 describe('runTurn', () => {
   afterEach(() => {
     vi.useRealTimers();
+    traced.turns.length = 0;
   });
 
   it('answers a question from search, attaching cited files and linking cited pages', async () => {
@@ -191,6 +221,11 @@ describe('runTurn', () => {
     ]);
 
     expect(box.ingested).toStrictEqual([]);
+    expect(box.model.functionIds).toStrictEqual(['turn']);
+
+    expect(traced.turns).toStrictEqual([
+      { identity: { source: 'telegram', chatRef: '7', userRef: '42' }, outcomes: ['answer'] },
+    ]);
   });
 
   it('lists dated items by filter, without embedding, and can cite what it listed', async () => {
@@ -245,6 +280,7 @@ describe('runTurn', () => {
     });
 
     expect(box.ingested).toStrictEqual([{ source: 'telegram', message }]);
+    expect(outcomes()).toStrictEqual(['saved']);
   });
 
   it('saves and answers in one message, keeping Undo on the combined reply', async () => {
@@ -272,6 +308,8 @@ describe('runTurn', () => {
     expect(box.ingested).toStrictEqual([
       { source: 'telegram', message: { ...message, text: note } },
     ]);
+
+    expect(outcomes()).toStrictEqual(['saved']);
   });
 
   it('keeps the save confirmation literal in html even when the summary looks like markdown', async () => {
@@ -310,6 +348,7 @@ describe('runTurn', () => {
     });
 
     expect(box.removed).toStrictEqual([]);
+    expect(outcomes()).toStrictEqual(['forget']);
   });
 
   it('lets the Forget button win over Undo when one message both saves and forgets', async () => {
@@ -331,6 +370,7 @@ describe('runTurn', () => {
 
     expect(box.ingested).toHaveLength(1);
     expect(box.removed).toStrictEqual([]);
+    expect(outcomes()).toStrictEqual(['forget']);
   });
 
   it('lets the model say so when nothing matches a forget', async () => {
@@ -412,6 +452,7 @@ describe('runTurn', () => {
     );
 
     await expect(box.turn()).rejects.toBeInstanceOf(StepLimitError);
+    expect(outcomes()).toStrictEqual(['step-limit']);
   });
 
   it('still confirms a save with Undo when the step cap is reached after it', async () => {
@@ -429,6 +470,7 @@ describe('runTurn', () => {
     });
 
     expect(box.ingested).toHaveLength(1);
+    expect(outcomes()).toStrictEqual(['step-limit']);
   });
 
   it('does not offer saving on the re-run after Undo', async () => {
@@ -511,6 +553,7 @@ describe('runTurn', () => {
 
     await expect(reply).resolves.toStrictEqual({ text: TIMEOUT_REPLY, keyboard: 'none' });
     expect(box.ingested).toStrictEqual([]);
+    expect(outcomes()).toStrictEqual(['timeout']);
   });
 
   it('still confirms a save with Undo when the budget runs out after it', async () => {
@@ -522,6 +565,7 @@ describe('runTurn', () => {
     await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
 
     await expect(reply).resolves.toStrictEqual({ text: savedReply(SAVED), keyboard: 'undo' });
+    expect(outcomes()).toStrictEqual(['timeout']);
   });
 
   it('waits for a save still running at the budget and confirms it with Undo', async () => {

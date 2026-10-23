@@ -64,18 +64,21 @@ async function viaModel(
   mimeType: string,
   data: Uint8Array,
 ): Promise<string> {
-  return deps.router.model('fast').complete({
-    system: INSTRUCTIONS[kind],
-    turns: [
-      {
-        role: 'user',
-        parts: [
-          { type: 'text', text: ASK[kind] },
-          { type: 'file', mimeType, data },
-        ],
-      },
-    ],
-  });
+  return deps.router.model('fast').complete(
+    {
+      system: INSTRUCTIONS[kind],
+      turns: [
+        {
+          role: 'user',
+          parts: [
+            { type: 'text', text: ASK[kind] },
+            { type: 'file', mimeType, data },
+          ],
+        },
+      ],
+    },
+    { functionId: 'ingest.extract' },
+  );
 }
 
 async function fromDocument(deps: Deps, key: string, contentType: string): Promise<string> {

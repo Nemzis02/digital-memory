@@ -129,6 +129,22 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/core/telemetry/trace-tree.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['grammy', 'grammy/*', '@grammyjs/*'],
+              message: 'Telegram types stop at src/bot/. Core sees ports such as FileSource.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/bot/**/*.ts', 'src/mcp/**/*.ts'],
     rules: {
       'no-restricted-imports': [

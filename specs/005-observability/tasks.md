@@ -7,7 +7,7 @@ decision. Answers the stack audit: no tracing of the agent loop.
       `.env.example`, env tests.
 - [x] Task 2: `src/core/telemetry/` with `startTelemetry` and `stopTelemetry`, wired into
       `src/index.ts` startup and shutdown. Read the current integration docs first.
-- [ ] Task 3: `functionId` and attributes through the router and `runTurn()`, the outcome
+- [x] Task 3: `functionId` and attributes through the router and `runTurn()`, the outcome
       attribute, the hashed chat ref.
 - [ ] Task 4: Masking and the in-memory exporter tests.
 - [ ] Task 5: Live check in the Langfuse UI. Update README (stack, env) with `readme-updater`.

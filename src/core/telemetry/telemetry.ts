@@ -1,4 +1,9 @@
 import { LangfuseSpanProcessor } from '@langfuse/otel';
+import {
+  LangfuseOtelSpanAttributes,
+  propagateAttributes,
+  startActiveObservation,
+} from '@langfuse/tracing';
 import { LangfuseVercelAiSdkIntegration } from '@langfuse/vercel-ai-sdk';
 import { context, diag, DiagLogLevel, propagation, trace } from '@opentelemetry/api';
 import type { DiagLogger } from '@opentelemetry/api';
@@ -8,10 +13,15 @@ import { registerTelemetry } from 'ai';
 import type { Env } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
 import { maskSecrets, redactValue } from '../logging/redact.ts';
+import { turnAttributes, type TurnIdentity, type TurnOutcome } from './attributes.ts';
 
 const log = logger.child({ module: 'telemetry' });
 
 const FLUSH_TIMEOUT_MS = 5_000;
+
+const OUTCOME_ATTRIBUTE = `${LangfuseOtelSpanAttributes.TRACE_METADATA}.outcome`;
+
+export type SetOutcome = (outcome: TurnOutcome) => void;
 
 export interface TelemetryOptions {
   exporter?: SpanExporter;
@@ -103,4 +113,34 @@ export async function stopTelemetry(): Promise<void> {
     propagation.disable();
     diag.disable();
   }
+}
+
+export function traceTurn<T>(
+  identity: TurnIdentity,
+  run: (setOutcome: SetOutcome) => Promise<T>,
+): Promise<T> {
+  return propagateAttributes(turnAttributes(identity), () =>
+    startActiveObservation(
+      'turn',
+      async (observation) => {
+        let outcome: TurnOutcome | undefined;
+
+        const setOutcome: SetOutcome = (value) => {
+          outcome = value;
+          observation.otelSpan.setAttribute(OUTCOME_ATTRIBUTE, JSON.stringify(value));
+        };
+
+        try {
+          return await run(setOutcome);
+        } catch (error) {
+          if (outcome === undefined) {
+            setOutcome('error');
+          }
+
+          throw error;
+        }
+      },
+      { asType: 'agent' },
+    ),
+  );
 }

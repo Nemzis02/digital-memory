@@ -12,8 +12,10 @@ import type { ChatModel, ChatTurn, ToolCall, ToolSpecs } from '../llm/router.ts'
 import { StepLimitError } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
 import { cite, usedParents } from '../retrieval/query.ts';
+import type { TurnOutcome } from '../telemetry/attributes.ts';
+import { traceTurn } from '../telemetry/telemetry.ts';
 import { systemPrompt } from './prompt.ts';
-import { createAgentTools, type AgentToolDeps, type AgentTurn } from './tools.ts';
+import { createAgentTools, type AgentToolDeps, type AgentTurn, type TurnEffects } from './tools.ts';
 
 const log = logger.child({ module: 'agent/turn' });
 
@@ -88,6 +90,14 @@ function compose(turn: AgentTurn, text: string, calls: readonly ToolCall[]): Rou
   };
 }
 
+function outcomeOf(effects: TurnEffects): TurnOutcome {
+  if (effects.forgetCandidate !== undefined) {
+    return 'forget';
+  }
+
+  return effects.saved === undefined ? 'answer' : 'saved';
+}
+
 async function timedOut(turn: AgentTurn): Promise<RouteReply> {
   // Ingestion is not cancelled, so a save still in flight will land; wait for it to offer Undo.
   const saved = await turn.effects.pending?.catch((error: unknown) => {
@@ -125,39 +135,54 @@ export async function runTurn(
     turns: toTurns(context, message),
   };
 
-  // Not `AbortSignal.timeout()`: its timer is internal to Node, so a test cannot fake it.
-  const budget = new AbortController();
+  const identity = { source: deps.source, chatRef: message.chatRef, userRef: message.userRef };
 
-  const timer = setTimeout(() => {
-    budget.abort(new DOMException('The turn ran out of time', 'TimeoutError'));
-  }, TURN_TIMEOUT_MS);
+  return traceTurn(identity, async (setOutcome) => {
+    // Not `AbortSignal.timeout()`: its timer is internal to Node, so a test cannot fake it.
+    const budget = new AbortController();
 
-  try {
-    const { text, calls } = await deps.model.run(request, tools, MAX_STEPS, budget.signal);
+    const timer = setTimeout(() => {
+      budget.abort(new DOMException('The turn ran out of time', 'TimeoutError'));
+    }, TURN_TIMEOUT_MS);
 
-    log.info('turn', {
-      calls: calls.map((call) => call.name),
-      saved: turn.effects.saved?.id,
-      forget: turn.effects.forgetCandidate?.id,
-    });
+    try {
+      const { text, calls } = await deps.model.run(request, tools, MAX_STEPS, {
+        signal: budget.signal,
+        functionId: 'turn',
+      });
 
-    return present(compose(turn, text, calls));
-  } catch (error) {
-    if (budget.signal.aborted) {
-      return timedOut(turn);
+      log.info('turn', {
+        calls: calls.map((call) => call.name),
+        saved: turn.effects.saved?.id,
+        forget: turn.effects.forgetCandidate?.id,
+      });
+
+      setOutcome(outcomeOf(turn.effects));
+
+      return present(compose(turn, text, calls));
+    } catch (error) {
+      if (budget.signal.aborted) {
+        setOutcome('timeout');
+
+        return timedOut(turn);
+      }
+
+      if (error instanceof StepLimitError) {
+        setOutcome('step-limit');
+
+        const saved = turn.effects.saved;
+
+        // The capped step's tools have already run, so a save may have landed; it keeps its Undo.
+        if (saved !== undefined) {
+          log.warn('step limit reached after a save', { id: saved.id, calls: error.calls.length });
+
+          return present({ text: savedReply(saved), keyboard: 'undo' });
+        }
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const saved = turn.effects.saved;
-
-    // The capped step's tools have already run, so a save may have landed; it keeps its Undo.
-    if (error instanceof StepLimitError && saved !== undefined) {
-      log.warn('step limit reached after a save', { id: saved.id, calls: error.calls.length });
-
-      return present({ text: savedReply(saved), keyboard: 'undo' });
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }

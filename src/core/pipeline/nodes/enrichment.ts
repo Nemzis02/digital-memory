@@ -81,6 +81,7 @@ export function createEnrichmentNode(deps: Pick<PipelineDeps, 'router' | 'now'>)
         turns: [{ role: 'user', parts: [{ type: 'text', text: described(state) }] }],
       },
       enrichmentSchema,
+      { functionId: 'ingest.enrich' },
     );
 
     const eventAt = result.eventAt === undefined ? undefined : epochDay(result.eventAt);

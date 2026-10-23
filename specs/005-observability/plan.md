@@ -4,13 +4,14 @@
 
 ```text
 src/core/telemetry/
-├── telemetry.ts        # startTelemetry(env), stopTelemetry(); the only Langfuse/OTel imports
-├── attributes.ts       # turnAttributes(), hashed chat ref, masking through redact.ts
+├── telemetry.ts        # startTelemetry(env), stopTelemetry(), traceTurn(); the only Langfuse/OTel imports
+├── attributes.ts       # turnAttributes(), hashRef(), the turn outcomes; no Langfuse/OTel imports
 └── telemetry.test.ts
 src/config/env.ts       # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_BASE_URL (optional)
 src/index.ts            # startTelemetry() first, stopTelemetry() in shutdown()
 src/core/llm/router.ts  # per-call telemetry metadata (functionId, attributes)
 src/core/agent/turn.ts  # outcome attribute
+src/core/ingestion/route.ts  # a captionless file save, traced like a turn
 ```
 
 ## 1. Startup
@@ -30,13 +31,21 @@ The env refine follows the webhook pair in `env.ts`: both keys or neither.
 
 ## 2. What a Trace Carries
 
-- `functionId`: `turn` for `runTurn()`, `ingest.enrich`, `ingest.extract`, `embed` for the
-  pipeline and embedding calls. The router takes it as an option on each call.
+- `functionId`: `turn` for `runTurn()`, `ingest.enrich` and `ingest.extract` for the pipeline
+  calls. The router takes it as an option on each call. Embedding calls carry none: the AI SDK
+  writes `functionId` only on generation spans, and `embeddings <model>` already names them.
 - Attributes on the turn: `source`, `chat` (SHA-256 of the chat ref, first 16 hex characters),
   `outcome` (`answer`, `saved`, `forget`, `step-limit`, `timeout`, `error`).
-- One trace per message. If the integration does not nest the `save_memory` ingestion under
-  the turn by itself, pass the parent context explicitly; record the result in MEMORY.md as a
-  library quirk.
+- One trace per message. The `save_memory` ingestion nests under the tool span by itself, also
+  through LangGraph, so no parent context is passed.
+
+AI SDK 7 `telemetry` options carry `functionId` but no `metadata`; the span shows it as
+`gen_ai.agent.name`, not as the span name. Trace attributes therefore come from `@langfuse/tracing`:
+`traceTurn()` opens a root `turn` observation inside `propagateAttributes`, which copies
+`userId` (hashed user ref), `sessionId` and `metadata.chat` (hashed chat ref), `tags` and
+`metadata.source` onto every span of the turn. The outcome is known only at the end, so it is
+written onto the root span as `langfuse.trace.metadata.outcome`, JSON-encoded like propagated
+metadata. A turn that throws without an outcome records `error`.
 
 ## 3. Redaction
 
@@ -57,7 +66,7 @@ this test.
 
 ## 5. Dependencies
 
-Runtime: `@langfuse/vercel-ai-sdk`, `@langfuse/otel`, `@opentelemetry/api` (`~1.9`),
+Runtime: `@langfuse/vercel-ai-sdk`, `@langfuse/otel`, `@langfuse/tracing`, `@opentelemetry/api` (`~1.9`),
 `@opentelemetry/sdk-trace-node`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/core`
 (`^2`), and the OTLP exporters (`^0.223`). All stay on the OpenTelemetry JS 2.x line, which
 is what `@langfuse/otel` 6 declares. Add a Dependabot group `telemetry` for `@langfuse/*`

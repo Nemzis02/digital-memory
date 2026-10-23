@@ -74,15 +74,23 @@ export class StepLimitError extends Error {
   }
 }
 
+export interface CallOptions {
+  functionId?: string;
+}
+
+export interface RunOptions extends CallOptions {
+  signal?: AbortSignal;
+}
+
 export interface ChatModel {
   readonly id: string;
-  complete(request: CompletionRequest): Promise<string>;
-  object<T>(request: CompletionRequest, schema: ZodType<T>): Promise<T>;
+  complete(request: CompletionRequest, options?: CallOptions): Promise<string>;
+  object<T>(request: CompletionRequest, schema: ZodType<T>, options?: CallOptions): Promise<T>;
   run(
     request: CompletionRequest,
     tools: ToolSpecs,
     maxSteps: number,
-    signal?: AbortSignal,
+    options?: RunOptions,
   ): Promise<RunResult>;
 }
 
@@ -178,8 +186,9 @@ function recordedCalls(steps: readonly StepResult<ToolSet>[]): ToolCall[] {
 }
 
 function chatModel(spec: ModelSpec): ChatModel {
-  function call(request: CompletionRequest) {
+  function call(request: CompletionRequest, options: CallOptions | undefined) {
     const { system, turns } = prepared(request);
+    const functionId = options?.functionId;
 
     return {
       model: spec.model,
@@ -187,13 +196,14 @@ function chatModel(spec: ModelSpec): ChatModel {
       messages: turns.map((turn) => toMessage(spec, turn)),
       ...(spec.reasoning === undefined ? {} : { reasoning: spec.reasoning }),
       ...(spec.maxOutputTokens === undefined ? {} : { maxOutputTokens: spec.maxOutputTokens }),
+      ...(functionId === undefined ? {} : { telemetry: { functionId } }),
     };
   }
 
   return {
     id: spec.id,
-    async complete(request) {
-      const { text } = await generateText(call(request));
+    async complete(request, options) {
+      const { text } = await generateText(call(request, options));
 
       const answer = requireText(text, spec.id);
 
@@ -201,9 +211,9 @@ function chatModel(spec: ModelSpec): ChatModel {
 
       return answer;
     },
-    async object(request, schema) {
+    async object(request, schema, options) {
       const { output } = await generateText({
-        ...call(request),
+        ...call(request, options),
         output: Output.object({ schema }),
       });
 
@@ -211,16 +221,16 @@ function chatModel(spec: ModelSpec): ChatModel {
 
       return output;
     },
-    async run(request, tools, maxSteps, signal) {
+    async run(request, tools, maxSteps, options) {
       if (!Number.isInteger(maxSteps) || maxSteps < 1) {
         throw new TypeError('run() needs a positive integer step cap');
       }
 
       const { steps, text } = await generateText({
-        ...call(request),
+        ...call(request, options),
         tools: toToolSet(tools),
         stopWhen: isStepCount(maxSteps),
-        ...(signal === undefined ? {} : { abortSignal: signal }),
+        ...(options?.signal === undefined ? {} : { abortSignal: options.signal }),
       });
 
       const calls = recordedCalls(steps);

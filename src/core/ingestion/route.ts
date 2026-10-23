@@ -7,6 +7,7 @@ import { logger } from '../logging/logger.ts';
 import type { MemorySource } from '../memory/payload.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
 import { NOTHING_FOUND } from '../retrieval/answer.ts';
+import { traceTurn } from '../telemetry/telemetry.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
 import { present, savedReply, type RouteReply } from './reply.ts';
@@ -57,11 +58,16 @@ async function respond(
       return present({ text: NOT_KEPT, keyboard: 'none' });
     }
 
-    const result = await deps.pipeline.ingest({ source: deps.source, message });
+    const identity = { source: deps.source, chatRef: message.chatRef, userRef: message.userRef };
 
-    log.info('ingested', { id: result.id, type: message.type, points: result.points });
+    return traceTurn(identity, async (setOutcome) => {
+      const result = await deps.pipeline.ingest({ source: deps.source, message });
 
-    return present({ text: savedReply(result), keyboard: 'undo' });
+      log.info('ingested', { id: result.id, type: message.type, points: result.points });
+      setOutcome('saved');
+
+      return present({ text: savedReply(result), keyboard: 'undo' });
+    });
   }
 
   const now = deps.now ?? (() => new Date());

@@ -1,4 +1,5 @@
 import type { LanguageModelV4CallOptions, LanguageModelV4GenerateResult } from '@ai-sdk/provider';
+import { registerTelemetry } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -168,9 +169,33 @@ describe('createRouter', () => {
   });
 
   afterEach(() => {
+    globalThis.AI_SDK_TELEMETRY_INTEGRATIONS = undefined;
     vi.unstubAllEnvs();
     resetEnvCache();
     resetLlmRouter();
+  });
+
+  it('names each call in its trace by the functionId it is given, and leaves it unset otherwise', async () => {
+    const seen: (string | undefined)[] = [];
+
+    registerTelemetry({
+      onStart(event) {
+        seen.push(event.functionId);
+      },
+    });
+
+    install('{"category":"food","tags":[]}');
+    scripted([generated('Hi!')]);
+
+    const router = createRouter(withStrong);
+    const schema = z.object({ category: z.string(), tags: z.array(z.string()) });
+
+    await router.model('fast').complete(ask('a'), { functionId: 'ingest.extract' });
+    await router.model('fast').object(ask('b'), schema, { functionId: 'ingest.enrich' });
+    await router.model('strong').run(ask('c'), {}, 1, { functionId: 'turn' });
+    await router.model('fast').complete(ask('d'));
+
+    expect(seen).toEqual(['ingest.extract', 'ingest.enrich', 'turn', undefined]);
   });
 
   it('sends ingest to gemini-3.8-flash at low reasoning, with the user text kept out of the instruction', async () => {
@@ -555,7 +580,7 @@ describe('createRouter', () => {
     await expect(
       createRouter(withStrong)
         .model('strong')
-        .run(ask('hello'), { search_memory: search.spec }, 4, controller.signal),
+        .run(ask('hello'), { search_memory: search.spec }, 4, { signal: controller.signal }),
     ).rejects.toMatchObject({ name: 'AbortError' });
 
     expect(search.execute).not.toHaveBeenCalled();
