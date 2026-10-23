@@ -3,7 +3,7 @@
 Blocked on spec 004 Task 5, because the `timeout` outcome comes from there. ADR 005 is the
 decision. Answers the stack audit: no tracing of the agent loop.
 
-- [ ] Task 1: Optional `LANGFUSE_*` variables in `env.ts` with the both-or-neither refine,
+- [x] Task 1: Optional `LANGFUSE_*` variables in `env.ts` with the both-or-neither refine,
       `.env.example`, env tests.
 - [ ] Task 2: `src/core/telemetry/` with `startTelemetry` and `stopTelemetry`, wired into
       `src/index.ts` startup and shutdown. Read the current integration docs first.

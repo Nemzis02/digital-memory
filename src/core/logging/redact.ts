@@ -7,6 +7,7 @@ const SECRET_ENV_KEYS = [
   'R2_SECRET_ACCESS_KEY',
   'LLM_FAST_API_KEY',
   'LLM_STRONG_API_KEY',
+  'LANGFUSE_SECRET_KEY',
 ] as const;
 
 const SENSITIVE_FIELD = /(token|secret|password|api[-_]?key|authorization|cookie|credential)/i;

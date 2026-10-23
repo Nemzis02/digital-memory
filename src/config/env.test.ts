@@ -67,6 +67,47 @@ describe('parseEnv', () => {
     expect(parseEnv(valid).PORT).toBe(8080);
   });
 
+  it('leaves tracing off when no Langfuse key is set', () => {
+    const env = parseEnv(valid);
+
+    expect(env.LANGFUSE_PUBLIC_KEY).toBeUndefined();
+    expect(env.LANGFUSE_SECRET_KEY).toBeUndefined();
+    expect(env.LANGFUSE_BASE_URL).toBe('https://cloud.langfuse.com');
+  });
+
+  it('accepts both Langfuse keys and an explicit base URL', () => {
+    const env = parseEnv({
+      ...valid,
+      LANGFUSE_PUBLIC_KEY: 'pk-test',
+      LANGFUSE_SECRET_KEY: 'sk-test',
+      LANGFUSE_BASE_URL: 'https://langfuse.example',
+    });
+
+    expect(env.LANGFUSE_PUBLIC_KEY).toBe('pk-test');
+    expect(env.LANGFUSE_SECRET_KEY).toBe('sk-test');
+    expect(env.LANGFUSE_BASE_URL).toBe('https://langfuse.example');
+  });
+
+  it('refuses one Langfuse key without the other', () => {
+    expect(() => parseEnv({ ...valid, LANGFUSE_PUBLIC_KEY: 'pk-test' })).toThrow(
+      /LANGFUSE_SECRET_KEY/,
+    );
+
+    expect(() => parseEnv({ ...valid, LANGFUSE_SECRET_KEY: 'sk-test' })).toThrow(
+      /LANGFUSE_PUBLIC_KEY/,
+    );
+
+    expect(() =>
+      parseEnv({ ...valid, LANGFUSE_PUBLIC_KEY: 'pk-test', LANGFUSE_SECRET_KEY: '  ' }),
+    ).toThrow(/LANGFUSE_SECRET_KEY/);
+  });
+
+  it('rejects a malformed Langfuse base URL', () => {
+    expect(() => parseEnv({ ...valid, LANGFUSE_BASE_URL: 'not-a-url' })).toThrow(
+      /LANGFUSE_BASE_URL/,
+    );
+  });
+
   it('derives the R2 S3 endpoint from the account id', () => {
     expect(r2Endpoint(parseEnv(valid))).toBe('https://acct.r2.cloudflarestorage.com');
   });

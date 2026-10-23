@@ -57,11 +57,28 @@ const envSchema = z
     // Fast model and embeddings. The strong key is optional at startup, but every text message needs it.
     LLM_FAST_API_KEY: nonEmpty('LLM_FAST_API_KEY'),
     LLM_STRONG_API_KEY: nonEmpty('LLM_STRONG_API_KEY').optional(),
+
+    // Langfuse tracing. Without both keys nothing is registered and no span leaves the process.
+    LANGFUSE_PUBLIC_KEY: nonEmpty('LANGFUSE_PUBLIC_KEY').optional(),
+    LANGFUSE_SECRET_KEY: nonEmpty('LANGFUSE_SECRET_KEY').optional(),
+    LANGFUSE_BASE_URL: z
+      .url('LANGFUSE_BASE_URL must be a valid URL')
+      .default('https://cloud.langfuse.com'),
   })
   .refine((env) => env.PUBLIC_URL === undefined || env.TELEGRAM_WEBHOOK_SECRET !== undefined, {
     error:
       'TELEGRAM_WEBHOOK_SECRET is required once PUBLIC_URL is set: the secret header is all that separates a real Telegram update from a forged POST, and the admin guard cannot help because a forged update can claim any from.id',
     path: ['TELEGRAM_WEBHOOK_SECRET'],
+  })
+  .refine((env) => env.LANGFUSE_PUBLIC_KEY === undefined || env.LANGFUSE_SECRET_KEY !== undefined, {
+    error:
+      'LANGFUSE_SECRET_KEY is required once LANGFUSE_PUBLIC_KEY is set: set both keys or neither',
+    path: ['LANGFUSE_SECRET_KEY'],
+  })
+  .refine((env) => env.LANGFUSE_SECRET_KEY === undefined || env.LANGFUSE_PUBLIC_KEY !== undefined, {
+    error:
+      'LANGFUSE_PUBLIC_KEY is required once LANGFUSE_SECRET_KEY is set: set both keys or neither',
+    path: ['LANGFUSE_PUBLIC_KEY'],
   });
 
 export type Env = z.infer<typeof envSchema>;
