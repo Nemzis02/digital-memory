@@ -22,6 +22,19 @@ updates:
       langchain:
         patterns:
           - '@langchain/*'
+      telemetry:
+        patterns:
+          - '@langfuse/*'
+          - '@opentelemetry/*'
+    # @langfuse/otel declares @opentelemetry/core ^2. The 0.x exporters joined the 3.x line at
+    # 0.300, which Dependabot counts as a minor bump, so they need their own version cap.
+    ignore:
+      - dependency-name: '@opentelemetry/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@opentelemetry/exporter-trace-otlp-http'
+        versions: ['>=0.300.0']
+      - dependency-name: '@opentelemetry/otlp-exporter-base'
+        versions: ['>=0.300.0']
 
   - package-ecosystem: github-actions
     directory: /

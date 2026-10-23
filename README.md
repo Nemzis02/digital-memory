@@ -13,6 +13,7 @@
 - **IDE Access via MCP (Phase 2, planned):** Cursor, Claude and other MCP clients over Streamable HTTP, protected by **OAuth 2.1** with Telegram Login.
 - **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once, within 4 steps and 30 seconds. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)).
 - **Ingestion Graph:** Powered by **LangGraph** for multi-step OCR and web scraping.
+- **Tracing:** One **Langfuse** trace per Telegram message, with each tool step, tokens, cost, the turn outcome and a hashed chat ref. Secrets are masked before export, and nothing is exported without keys ([ADR 005](docs/adr/005-observability.md)).
 
 ---
 
@@ -24,6 +25,7 @@
 - **Models:** Vercel AI SDK (`ai`) over `@ai-sdk/google` (`gemini-3.8-flash`, `gemini-embedding-2`) and `@ai-sdk/anthropic` (`claude-sonnet-5-5`)
 - **Object Storage:** Cloudflare R2 (`@aws-sdk/client-s3`)
 - **Article Extraction:** `@mozilla/readability` over `linkedom` for saved links
+- **Observability:** Langfuse over OpenTelemetry (`@langfuse/vercel-ai-sdk`, `@langfuse/otel`, `@langfuse/tracing`, `@opentelemetry/sdk-trace-node`)
 - **Planned (Phase 2):** `@modelcontextprotocol/sdk` (MCP)
 
 ---
@@ -39,6 +41,8 @@ answers every text message, so the process starts without `LLM_STRONG_API_KEY` b
 message until it is set.
 `PUBLIC_URL` with `TELEGRAM_WEBHOOK_SECRET` are only needed when serving a webhook —
 leaving both unset selects long polling, which needs no public address. `npm run dev` starts `src/index.ts`, and that process binds `PORT` either way: Telegram, and later MCP and OAuth, share one HTTP server.
+Tracing is optional. Set both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (Langfuse project
+settings, API Keys) to export traces, or neither. `LANGFUSE_BASE_URL` defaults to the EU region.
 
 ```bash
 npm run db:up        # PostgreSQL and Qdrant; COMPOSE="docker compose" to use Docker
