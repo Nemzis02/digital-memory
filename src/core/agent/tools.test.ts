@@ -13,7 +13,7 @@ import {
   tapas,
   type FakeOptions,
 } from './fixtures.ts';
-import { createAgentTools, type TurnEffects } from './tools.ts';
+import { AGENT_TOOL_NAMES, createAgentTools, type TurnEffects } from './tools.ts';
 
 function harness(options?: FakeOptions) {
   const fakes = memoryFakes({ parents: [], ...options });
@@ -32,6 +32,12 @@ function harness(options?: FakeOptions) {
 
   return { ...fakes, tools, effects, shown };
 }
+
+describe('AGENT_TOOL_NAMES', () => {
+  it('names every tool the agent has, in order', () => {
+    expect(Object.keys(harness().tools)).toStrictEqual([...AGENT_TOOL_NAMES]);
+  });
+});
 
 describe('search_memory', () => {
   it('searches children and returns their parents in hit order, text fenced', async () => {

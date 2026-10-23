@@ -54,6 +54,15 @@ export interface AgentTools {
   forget_memory: ToolSpec<ForgetMemoryInput>;
 }
 
+export const AGENT_TOOL_NAMES = [
+  'search_memory',
+  'list_memories',
+  'save_memory',
+  'forget_memory',
+] as const satisfies readonly (keyof AgentTools)[];
+
+export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
+
 export interface ListedMemory {
   id: UUID;
   summary: string;
