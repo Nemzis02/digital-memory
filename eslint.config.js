@@ -12,6 +12,12 @@ const MULTILINE = [
   'multiline-expression',
 ];
 
+const TRACING = {
+  group: ['@langfuse/*', '@opentelemetry/*'],
+  message:
+    'Tracing stays in src/core/telemetry/. The AI SDK picks up the registered integration by itself.',
+};
+
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**', 'coverage/**'] },
   js.configs.recommended,
@@ -62,7 +68,7 @@ export default tseslint.config(
   },
   {
     files: ['src/core/**/*.ts'],
-    ignores: ['src/core/llm/**/*.ts'],
+    ignores: ['src/core/llm/**/*.ts', 'src/core/telemetry/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -77,6 +83,7 @@ export default tseslint.config(
               message:
                 'Model SDKs stay in src/core/llm/. Everyone else uses the router and embeddings ports.',
             },
+            TRACING,
           ],
         },
       ],
@@ -92,6 +99,29 @@ export default tseslint.config(
             {
               group: ['grammy', 'grammy/*', '@grammyjs/*'],
               message: 'Telegram types stop at src/bot/. Core sees ports such as FileSource.',
+            },
+            TRACING,
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // `ai` is allowed here only for `registerTelemetry`.
+    files: ['src/core/telemetry/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['grammy', 'grammy/*', '@grammyjs/*'],
+              message: 'Telegram types stop at src/bot/. Core sees ports such as FileSource.',
+            },
+            {
+              group: ['ai/*', '@ai-sdk/*'],
+              message:
+                'Model SDKs stay in src/core/llm/. Telemetry needs only `registerTelemetry` from `ai`.',
             },
           ],
         },
@@ -119,6 +149,7 @@ export default tseslint.config(
               message:
                 'Model SDKs stay in src/core/llm/. Transports consume the router and embeddings ports.',
             },
+            TRACING,
           ],
         },
       ],

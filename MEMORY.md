@@ -4,6 +4,12 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-23 — OpenTelemetry packages must stay on the 2.x line until Langfuse moves
+
+`@langfuse/otel` 6.0.2 peers on OTel JS 2.x, but its exporter range admits 0.300 (3.x, out
+2026-10-20), so a bare install mixes in `core@3`. Keep exporters at `^0.223`, the rest at
+`^2`, until `@langfuse/otel` declares `core ^3`. Check with `npm ls @opentelemetry/core`.
+
 ## 2026-10-22 — Vitest fake timers do not fire `AbortSignal.timeout()`
 
 Node runs that timer internally, so `advanceTimersByTimeAsync` never aborts the signal. For a
@@ -56,12 +62,6 @@ Node's type stripping does not remap `./env.js` to `./env.ts`, so the traditiona
 specifier dies at runtime with `ERR_MODULE_NOT_FOUND` while `tsc --noEmit` stays green — CI
 will not catch it. `allowImportingTsExtensions` + `rewriteRelativeImportExtensions` let source
 say `./env.ts` and still emit `./env.js`.
-
-### Zod v4 drift
-
-- `.min(1, msg)` does not fire for a _missing_ key, only a present-but-empty one. For a
-  readable "X is required", pass `z.string({ error: (issue) => ... })` and branch on
-  `issue.input === undefined`.
 
 ### typescript-eslint: root configs need `allowDefaultProject`
 

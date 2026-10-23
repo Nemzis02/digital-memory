@@ -10,6 +10,7 @@ import { logger } from './core/logging/logger.ts';
 import { ingestionPipeline } from './core/pipeline/graph.ts';
 import { forget } from './core/retrieval/query.ts';
 import { r2Storage } from './core/storage/r2.ts';
+import { startTelemetry, stopTelemetry } from './core/telemetry/telemetry.ts';
 import { qdrantStore } from './core/vector/qdrant.ts';
 import { serve } from './app.ts';
 import { createBot } from './bot/bot.ts';
@@ -20,11 +21,15 @@ const log = logger.child({ module: 'app' });
 async function shutdown(close: () => Promise<void>, signal: NodeJS.Signals): Promise<void> {
   log.info('shutting down', { signal });
   await close();
+  await stopTelemetry();
   await closeDatabase();
 }
 
 async function main(): Promise<void> {
   const env = getEnv();
+
+  startTelemetry(env);
+
   const files = telegramFileSource(new Api(env.TELEGRAM_BOT_TOKEN), env.TELEGRAM_BOT_TOKEN);
   const pipeline = ingestionPipeline(files);
   await pipeline.init();
@@ -82,7 +87,8 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error: unknown) => {
+main().catch(async (error: unknown) => {
   log.error('failed to start', { error });
   process.exitCode = 1;
+  await stopTelemetry();
 });

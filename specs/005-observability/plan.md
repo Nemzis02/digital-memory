@@ -16,8 +16,11 @@ src/core/agent/turn.ts  # outcome attribute
 ## 1. Startup
 
 Read the current `@langfuse/vercel-ai-sdk` docs (context7 or langfuse.com) before writing
-code: the package API moved between AI SDK 6 and 7. The expected shape for AI SDK 7 is
-`registerTelemetry(...)` once at startup, with the OpenTelemetry Node SDK as transport.
+code: the package API moved between AI SDK 6 and 7. For AI SDK 7 it is
+`registerTelemetry(new LangfuseVercelAiSdkIntegration())` once at startup, with a
+`NodeTracerProvider` from `@opentelemetry/sdk-trace-node` that holds the
+`LangfuseSpanProcessor` as transport. `NodeSDK` is not used: it also starts an OTLP logs
+exporter from env and pulls in metrics and gRPC packages that tracing does not need.
 
 `startTelemetry(env)` does nothing when either key is absent. Otherwise it registers and logs
 `telemetry started` with the base URL. `stopTelemetry()` flushes, with a 5 s cap, and runs in
@@ -54,5 +57,8 @@ this test.
 
 ## 5. Dependencies
 
-`@langfuse/vercel-ai-sdk` and the OpenTelemetry packages its docs require (runtime).
-Add a Dependabot group `telemetry` for `@langfuse/*` and `@opentelemetry/*`.
+Runtime: `@langfuse/vercel-ai-sdk`, `@langfuse/otel`, `@opentelemetry/api` (`~1.9`),
+`@opentelemetry/sdk-trace-node`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/core`
+(`^2`), and the OTLP exporters (`^0.223`). All stay on the OpenTelemetry JS 2.x line, which
+is what `@langfuse/otel` 6 declares. Add a Dependabot group `telemetry` for `@langfuse/*`
+and `@opentelemetry/*`.

@@ -5,7 +5,7 @@ decision. Answers the stack audit: no tracing of the agent loop.
 
 - [x] Task 1: Optional `LANGFUSE_*` variables in `env.ts` with the both-or-neither refine,
       `.env.example`, env tests.
-- [ ] Task 2: `src/core/telemetry/` with `startTelemetry` and `stopTelemetry`, wired into
+- [x] Task 2: `src/core/telemetry/` with `startTelemetry` and `stopTelemetry`, wired into
       `src/index.ts` startup and shutdown. Read the current integration docs first.
 - [ ] Task 3: `functionId` and attributes through the router and `runTurn()`, the outcome
       attribute, the hashed chat ref.
