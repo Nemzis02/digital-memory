@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { AGENT_TOOL_NAMES } from '../agent/tools.ts';
+import { MEMORY_CATEGORIES, MEMORY_KINDS, MEMORY_TYPES } from '../memory/payload.ts';
 import {
   buildDataset,
   corpusRowSchema,
@@ -12,6 +14,7 @@ import {
   retrievalCaseSchema,
   turnCaseSchema,
   type CorpusRow,
+  type EvalDataset,
 } from './dataset.ts';
 
 const dentist = {
@@ -200,5 +203,56 @@ describe('DEFAULT_EVALS_DIR', () => {
   it('points at evals/ in the repository root', () => {
     expect(basename(DEFAULT_EVALS_DIR)).toBe('evals');
     expect(existsSync(join(dirname(DEFAULT_EVALS_DIR), 'package.json'))).toBe(true);
+  });
+});
+
+describe('the committed golden set', () => {
+  let dataset: EvalDataset;
+
+  beforeAll(async () => {
+    dataset = await loadDataset();
+  });
+
+  it('has the number of rows the plan asks for', async () => {
+    const { corpus, retrieval, turns } = dataset;
+
+    expect(corpus.length).toBeGreaterThanOrEqual(40);
+    expect(corpus.length).toBeLessThanOrEqual(60);
+    expect(retrieval.length).toBeGreaterThanOrEqual(30);
+    expect(retrieval.length).toBeLessThanOrEqual(40);
+    expect(turns.length).toBeGreaterThanOrEqual(20);
+    expect(turns.length).toBeLessThanOrEqual(30);
+  });
+
+  it('covers every category, kind and type', async () => {
+    const { corpus } = dataset;
+
+    expect(new Set(corpus.map((row) => row.metadata.category))).toStrictEqual(
+      new Set(MEMORY_CATEGORIES),
+    );
+
+    expect(new Set(corpus.map((row) => row.metadata.kind))).toStrictEqual(new Set(MEMORY_KINDS));
+    expect(new Set(corpus.map((row) => row.type))).toStrictEqual(new Set(MEMORY_TYPES));
+  });
+
+  it('plants one memory that gives instructions', async () => {
+    const { corpus } = dataset;
+
+    expect(corpus.filter((row) => /ignore previous instructions/i.test(row.text))).toHaveLength(1);
+  });
+
+  it('asks two queries that have no right answer', async () => {
+    const { retrieval } = dataset;
+
+    expect(retrieval.filter((testCase) => testCase.expected.length === 0)).toHaveLength(2);
+  });
+
+  it('expects every tool at least once and some turns without a tool', async () => {
+    const { turns } = dataset;
+    const expected = new Set(turns.flatMap((testCase) => testCase.expected));
+
+    expect(expected).toStrictEqual(new Set(AGENT_TOOL_NAMES));
+    expect(turns.some((testCase) => testCase.expected.length === 0)).toBe(true);
+    expect(turns.some((testCase) => testCase.context.length > 0)).toBe(true);
   });
 });

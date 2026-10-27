@@ -1,0 +1,40 @@
+{"key":"dentist-keyword","query":"dentist","expected":["dentist","dentist-duplicate"]}
+{"key":"dentist-paraphrase","query":"when is my teeth appointment","expected":["dentist","dentist-duplicate"]}
+{"key":"restaurants-valencia","query":"restaurants in Valencia","expected":["tapas-bar","ramen-place"]}
+{"key":"landlord-phone","query":"landlord phone number","expected":["landlord-contact"]}
+{"key":"rent-amount","query":"how much is my rent","expected":["landlord-contact","rental-contract"]}
+{"key":"nie-keyword","query":"NIE renewal","expected":["nie-appointment"]}
+{"key":"padron-paraphrase","query":"how do I get the padron certificate","expected":["padron-certificate"]}
+{"key":"plumber-keyword","query":"plumber","expected":["plumber-recommendation"]}
+{"key":"boiler-paraphrase","query":"who fixed the heating","expected":["plumber-recommendation"]}
+{"key":"wifi-keyword","query":"wifi password","expected":["wifi-password"]}
+{"key":"electricity-filter","query":"electricity bill for September","expected":["electricity-bill"]}
+{"key":"vat-paraphrase","query":"when do I have to pay VAT","expected":["vat-return"]}
+{"key":"allergy-paraphrase","query":"which antibiotics am I allergic to","expected":["allergy-note"]}
+{"key":"gym-paraphrase","query":"how do I cancel the gym","expected":["gym-membership"]}
+{"key":"knee-paraphrase","query":"physio for my knee","expected":["physio-recommendation"]}
+{"key":"standup-keyword","query":"standup time","expected":["standup-time"]}
+{"key":"review-paraphrase","query":"date of my performance review","expected":["performance-review"]}
+{"key":"invoice-keyword","query":"Acme invoice","expected":["acme-invoice"]}
+{"key":"tokyo-keyword","query":"flight to Tokyo","expected":["japan-flight"]}
+{"key":"kyoto-paraphrase","query":"what to do in Kyoto","expected":["kyoto-article"]}
+{"key":"lisbon-filter","query":"hotel in Lisbon","expected":["lisbon-hotel"]}
+{"key":"airport-paraphrase","query":"how do I get to the airport","expected":["airport-metro"]}
+{"key":"itv-paraphrase","query":"car inspection deadline","expected":["car-itv"]}
+{"key":"metro-keyword","query":"metro card price","expected":["metro-card"]}
+{"key":"shoes-paraphrase","query":"which running shoes fit me","expected":["running-shoes"]}
+{"key":"laptop-paraphrase","query":"laptop serial number","expected":["laptop-warranty"]}
+{"key":"concert-filter","query":"concert in November","expected":["concert"]}
+{"key":"book-paraphrase","query":"the book Jorge recommended","expected":["book-recommendation"]}
+{"key":"series-paraphrase","query":"which episode of Slow Horses was I on","expected":["series-note"]}
+{"key":"spanish-filter","query":"Spanish lessons schedule","expected":["spanish-class"]}
+{"key":"rust-keyword","query":"rust course","expected":["rust-course"]}
+{"key":"spare-key-paraphrase","query":"who has my spare key","expected":["neighbour-contact"]}
+{"key":"pablo-gift-paraphrase","query":"what does Pablo want for his birthday","expected":["pablo-birthday"]}
+{"key":"umbrella-paraphrase","query":"where did I leave my umbrella","expected":["lost-umbrella"]}
+{"key":"paella-keyword","query":"paella recipe","expected":["paella-recipe"]}
+{"key":"coffee-filter","query":"coffee beans receipt","expected":["coffee-receipt"]}
+{"key":"q4-goals-keyword","query":"Q4 goals","expected":["whiteboard-photo"]}
+{"key":"japan-filter","query":"everything about the Japan trip","expected":["japan-flight","kyoto-article","travel-fund-idea"]}
+{"key":"no-answer-piano","query":"piano lessons","expected":[]}
+{"key":"no-answer-sailing","query":"sailing licence exam","expected":[]}

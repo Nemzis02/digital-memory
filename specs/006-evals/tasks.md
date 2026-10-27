@@ -5,7 +5,7 @@ before it. Answers the stack audit: no eval harness, so quality changes are not 
 
 - [x] Task 1: Zod schemas and loader in `src/core/eval/dataset.ts`, scorers in `score.ts`,
       both with tests.
-- [ ] Task 2: The golden set in `evals/`: corpus, retrieval queries, turn messages, README.
+- [x] Task 2: The golden set in `evals/`: corpus, retrieval queries, turn messages, README.
       `dataset.test.ts` green.
 - [ ] Task 3: `run.live.test.ts`: seed, retrieval recall, turn tool choice, cleanup, report
       table. `npm run eval` and `eval:accept`. First baseline committed.

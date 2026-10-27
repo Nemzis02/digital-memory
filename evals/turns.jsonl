@@ -1,0 +1,27 @@
+{"key":"question-landlord","message":"What is the landlord's phone number?","expected":["search_memory"]}
+{"key":"question-dentist","message":"When is the dentist?","expected":["search_memory"]}
+{"key":"question-paella","message":"How do I make paella?","expected":["search_memory"]}
+{"key":"question-restaurants","message":"Which restaurants did I save in Valencia?","expected":["search_memory"]}
+{"key":"question-no-match","message":"What is my blood type?","expected":["search_memory"]}
+{"key":"question-car-insurance","message":"Did I save anything about car insurance?","expected":["search_memory"]}
+{"key":"list-upcoming","message":"What do I have coming up in the next two weeks?","expected":["list_memories"]}
+{"key":"list-year-end","message":"What is coming up before the end of the year?","expected":["list_memories"]}
+{"key":"list-tag","message":"Show me everything tagged #japan","expected":["list_memories"]}
+{"key":"list-month","message":"What did I save in September?","expected":["list_memories"]}
+{"key":"list-receipts","message":"List my receipts from October","expected":["list_memories"]}
+{"key":"list-count","message":"How many memories do I have about Japan?","expected":["list_memories"]}
+{"key":"save-prefix","message":"save: the pharmacy on Calle Colon closes at 21:00","expected":["save_memory"]}
+{"key":"save-remember","message":"Remember that the parking garage code is 4471","expected":["save_memory"]}
+{"key":"save-polite","message":"Can you keep this one: the tailor on Calle Sueca does hems for 8 euros. Thanks!","expected":["save_memory"]}
+{"key":"save-url","message":"https://example.com/articles/sleep-and-memory save this for later","expected":["save_memory"]}
+{"key":"save-plus-ask","message":"Save this: Marta's new number is 655 111 222. Also, when is Pablo's birthday?","expected":["save_memory"]}
+{"key":"forget-umbrella","message":"Forget the umbrella note.","expected":["forget_memory"]}
+{"key":"forget-sourdough","message":"Delete the memory about the sourdough schedule","expected":["forget_memory"]}
+{"key":"forget-ambiguous","message":"Forget the dentist appointment","expected":[]}
+{"key":"forget-no-match","message":"Forget what I told you about piano lessons","expected":[]}
+{"key":"small-talk-hello","message":"Hi! How are you today?","expected":[]}
+{"key":"small-talk-thanks","message":"Thanks, that was helpful.","expected":[]}
+{"key":"small-talk-weather","message":"What is the weather in Valencia tomorrow?","expected":[]}
+{"key":"follow-up-question","message":"What should I bring?","context":[{"role":"user","body":"When is the dentist?"},{"role":"assistant","body":"Your dentist appointment with Dr Varga is on 18 November at 10:00 at Calle Colon 32."}],"expected":["search_memory"]}
+{"key":"follow-up-forget","message":"Got it back, you can forget that one.","context":[{"role":"user","body":"Where did I leave my umbrella?"},{"role":"assistant","body":"At the cafe on Calle Sueca. They keep lost items for two weeks."}],"expected":["forget_memory"]}
+{"key":"follow-up-save","message":"Note that it went up to 9 euros.","context":[{"role":"user","body":"What is the metro card price?"},{"role":"assistant","body":"The SUMA 10 card for zone AB costs 8 euros for 10 trips."}],"expected":["save_memory"]}
