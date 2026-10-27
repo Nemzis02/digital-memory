@@ -79,5 +79,6 @@ expected key is in the corpus.
 
 ## 6. Dependencies
 
-None new. `evalite` was considered; plain Vitest keeps one test runner and the live gating
-the project already uses.
+`@langfuse/client` for the dataset runs: the tracing packages have no dataset or experiment
+API. It is imported only in `src/core/telemetry/`. `evalite` was considered; plain Vitest
+keeps one test runner and the live gating the project already uses.

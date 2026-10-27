@@ -102,3 +102,17 @@ npm run eval:accept
 
 This copies `last-run.json` to `baseline.json`. Commit `baseline.json` with the change that
 caused the new scores.
+
+## Langfuse
+
+With `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` set, `npm run eval` prints `langfuse: on`
+and also records the run in Langfuse. Without the keys it prints `langfuse: off` and only
+writes the local files.
+
+- Two datasets: `eval-retrieval` and `eval-turns`. Each case is one item with the id
+  `<dataset>-<key>`, for example `eval-retrieval-dentist-keyword`.
+- Each run is a dataset run named by its `ran_at` time, the same value as in
+  `last-run.json`. Its metadata holds the model ids.
+- Each item of a run has its trace and one score: `recall_at_5` or `tool_choice`.
+- The run updates the items from the files. When a case is renamed or removed, its old item
+  is archived.
