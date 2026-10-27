@@ -5,7 +5,7 @@ import type { ToolSpec } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemoryPayload, MemorySource, MemoryType } from '../memory/payload.ts';
 import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
-import { recall, search } from '../retrieval/query.ts';
+import { readableSources, recall, search } from '../retrieval/query.ts';
 import type { VectorStore } from '../vector/vector-store.ts';
 import { fenceMemory } from './prompt.ts';
 import {
@@ -116,6 +116,7 @@ function filed(result: IngestResult) {
 
 export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentTools {
   const { store, embeddings } = deps;
+  const sources = readableSources(deps.source);
 
   function show(parents: readonly MemoryPayload[]): void {
     for (const parent of parents) {
@@ -129,7 +130,7 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         'Search what saved memories say. Use for any question answered from their content. Returns the matching memories, best first, each with its text inside a <memory> block.',
       input: searchMemoryInput,
       async execute(input) {
-        const parents = await search({ store, embeddings }, toQueryInput(input));
+        const parents = await search({ store, embeddings }, { ...toQueryInput(input), sources });
 
         show(parents);
 
@@ -142,7 +143,7 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
         'List memories by metadata alone, with no text search: what is coming up, receipts from a month, everything tagged #x. Returns id, summary and dates.',
       input: listMemoriesInput,
       async execute(input) {
-        const memories = await recall(store, toQueryInput(input));
+        const memories = await recall(store, { ...toQueryInput(input), sources });
 
         show(memories);
 

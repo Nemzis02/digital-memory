@@ -6,7 +6,7 @@ import type { MemoryPayload } from '../../memory/payload.ts';
 import type { MemoryRecord, VectorStore } from '../../vector/vector-store.ts';
 import { requireEnrichment, requireStored } from '../state.ts';
 import type { IngestionStateType } from '../state.ts';
-import { createStorageNode, embeddableText } from './storage.ts';
+import { createStorageNode, embeddableText, embedRecords } from './storage.ts';
 
 function payload(overrides: Partial<MemoryPayload> = {}): MemoryPayload {
   return parseMemoryPayload({
@@ -81,6 +81,20 @@ describe('embeddableText', () => {
     expect(embeddableText(payload({ original_text: '   ' }))).toBe(
       'Tapas at Bar Pepe. Valencia #tapas',
     );
+  });
+});
+
+describe('embedRecords', () => {
+  it('embeds a shared text once and says how many texts it embedded', async () => {
+    const fakes = deps();
+    const twin = payload({ id: '33333333-3333-4333-8333-333333333333' });
+    const other = payload({ id: '44444444-4444-4444-8444-444444444444', original_text: 'paella' });
+
+    const { records, embedded } = await embedRecords(fakes.embeddings, [payload(), twin, other]);
+
+    expect(embedded).toBe(2);
+    expect(records.map((record) => record.dense)).toStrictEqual([[0], [0], [1]]);
+    expect(records[2]?.sparse).toStrictEqual(embedSparse(embeddableText(other)));
   });
 });
 

@@ -258,6 +258,7 @@ describe('runTurn', () => {
       {
         filter: {
           isChild: false,
+          sources: ['telegram', 'mcp'],
           kinds: ['event'],
           eventAfter: Date.UTC(2026, 9, 26) / 1000,
           eventBefore: Date.UTC(2026, 10, 1) / 1000,

@@ -13,6 +13,8 @@ src/core/eval/
 ├── dataset.ts            # Zod schemas for the three files, loader
 ├── score.ts              # recallAtK(), toolChoice(): pure functions
 ├── score.test.ts         # runs in CI
+├── seed.ts               # corpus rows -> eval points, seeding and the eval sweep; tested in CI
+├── report.ts             # run file schema, baseline compare, table; tested in CI
 ├── accept.ts             # copies evals/last-run.json to evals/baseline.json
 ├── dataset.test.ts       # runs in CI: every file parses, every expected key exists in the corpus
 └── run.live.test.ts      # LLM_LIVE=1 only: seeds, measures, compares, cleans up

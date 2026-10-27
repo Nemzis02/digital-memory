@@ -7,7 +7,7 @@ before it. Answers the stack audit: no eval harness, so quality changes are not 
       both with tests.
 - [x] Task 2: The golden set in `evals/`: corpus, retrieval queries, turn messages, README.
       `dataset.test.ts` green.
-- [ ] Task 3: `run.live.test.ts`: seed, retrieval recall, turn tool choice, cleanup, report
+- [x] Task 3: `run.live.test.ts`: seed, retrieval recall, turn tool choice, cleanup, report
       table. `npm run eval` and `eval:accept`. First baseline committed.
 - [ ] Task 4: Langfuse dataset runs when telemetry is on.
 - [ ] Task 5: README section on evals with the baseline numbers, through `readme-updater`.

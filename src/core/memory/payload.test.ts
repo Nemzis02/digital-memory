@@ -86,6 +86,10 @@ describe('parseMemoryPayload', () => {
     expect(parseMemoryPayload(fromEditor).source).toBe('mcp');
   });
 
+  it('accepts a memory seeded by the eval run', () => {
+    expect(parseMemoryPayload({ ...valid, source: 'eval' }).source).toBe('eval');
+  });
+
   it('keeps the sender file name of a stored document', () => {
     const document = { ...valid, type: 'document', file_name: 'Программа 2023.pdf' };
 

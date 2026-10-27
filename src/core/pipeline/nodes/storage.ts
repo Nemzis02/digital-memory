@@ -1,4 +1,5 @@
 import { logger } from '../../logging/logger.ts';
+import type { Embeddings } from '../../llm/embeddings.ts';
 import type { MemoryPayload } from '../../memory/payload.ts';
 import type { MemoryRecord } from '../../vector/vector-store.ts';
 import type { PipelineDeps } from '../deps.ts';
@@ -18,6 +19,31 @@ export function embeddableText(payload: MemoryPayload): string {
   return body === '' ? head : `${head}\n\n${body}`;
 }
 
+export async function embedRecords(
+  embeddings: Embeddings,
+  payloads: readonly MemoryPayload[],
+): Promise<{ records: MemoryRecord[]; embedded: number }> {
+  const texts = payloads.map(embeddableText);
+
+  const unique = [...new Set(texts)];
+  const vectors = await embeddings.embedMany(unique, 'document');
+
+  const dense = new Map(unique.map((text, index) => [text, vectors[index]]));
+
+  const records = payloads.map((payload, index): MemoryRecord => {
+    const text = texts[index] ?? '';
+    const vector = dense.get(text);
+
+    if (vector === undefined) {
+      throw new Error(`No embedding was returned for ${payload.id}`);
+    }
+
+    return { payload, dense: vector, sparse: embeddings.embedSparse(text) };
+  });
+
+  return { records, embedded: unique.length };
+}
+
 export function createStorageNode(deps: Pick<PipelineDeps, 'store' | 'embeddings'>) {
   return async (state: IngestionStateType): Promise<IngestionUpdate> => {
     const { payloads } = state;
@@ -26,27 +52,11 @@ export function createStorageNode(deps: Pick<PipelineDeps, 'store' | 'embeddings
       throw new Error('Chunking must run before anything can be indexed');
     }
 
-    const texts = payloads.map(embeddableText);
-
-    const unique = [...new Set(texts)];
-    const vectors = await deps.embeddings.embedMany(unique, 'document');
-
-    const dense = new Map(unique.map((text, index) => [text, vectors[index]]));
-
-    const records = payloads.map((payload, index): MemoryRecord => {
-      const text = texts[index] ?? '';
-      const vector = dense.get(text);
-
-      if (vector === undefined) {
-        throw new Error(`No embedding was returned for ${payload.id}`);
-      }
-
-      return { payload, dense: vector, sparse: deps.embeddings.embedSparse(text) };
-    });
+    const { records, embedded } = await embedRecords(deps.embeddings, payloads);
 
     await deps.store.upsert(records);
 
-    log.info('indexed', { id: state.id, points: records.length, embedded: unique.length });
+    log.info('indexed', { id: state.id, points: records.length, embedded });
 
     return {};
   };

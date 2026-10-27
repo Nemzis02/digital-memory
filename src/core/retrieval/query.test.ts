@@ -4,7 +4,15 @@ import type { MemoryPayload } from '../memory/payload.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, SearchHit, SearchQuery, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND } from './answer.ts';
-import { cite, forget, recall, search, usedParents, type SearchDeps } from './query.ts';
+import {
+  cite,
+  forget,
+  readableSources,
+  recall,
+  search,
+  usedParents,
+  type SearchDeps,
+} from './query.ts';
 
 const parent: MemoryPayload = {
   id: '3f0c6f0e-2d1a-4f6b-9f1e-8c4b2a7d5e10',
@@ -119,6 +127,14 @@ describe('recall', () => {
     expect(store.lists).toStrictEqual([{ filter: { isChild: false, eventBefore: 1_772_500_000 } }]);
 
     expect(store.searches).toBe(0);
+  });
+
+  it('scopes a listing to the sources it is given', async () => {
+    const store = recordingStore();
+
+    await recall(store, { sources: ['eval'] });
+
+    expect(store.lists).toStrictEqual([{ filter: { isChild: false, sources: ['eval'] } }]);
   });
 
   it('lists parents with no order when the input sets none', async () => {
@@ -280,6 +296,14 @@ describe('search', () => {
 
     expect(box.embeds).toStrictEqual([]);
     expect(box.searches).toStrictEqual([]);
+  });
+});
+
+describe('readableSources', () => {
+  it('keeps the eval corpus apart from real memories', () => {
+    expect(readableSources('telegram')).toStrictEqual(['telegram', 'mcp']);
+    expect(readableSources('mcp')).toStrictEqual(['telegram', 'mcp']);
+    expect(readableSources('eval')).toStrictEqual(['eval']);
   });
 });
 

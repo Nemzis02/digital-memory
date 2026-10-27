@@ -65,7 +65,12 @@ describe('search_memory', () => {
         dense: DENSE,
         sparse: SPARSE,
         limit: 10,
-        filter: { isChild: true, kinds: ['event'], eventAfter: Date.UTC(2026, 9, 21) / 1000 },
+        filter: {
+          isChild: true,
+          sources: ['telegram', 'mcp'],
+          kinds: ['event'],
+          eventAfter: Date.UTC(2026, 9, 21) / 1000,
+        },
       },
     ]);
 
@@ -132,7 +137,12 @@ describe('list_memories', () => {
 
     expect(box.lists).toStrictEqual([
       {
-        filter: { isChild: false, kinds: ['event'], eventAfter: Date.UTC(2026, 9, 21) / 1000 },
+        filter: {
+          isChild: false,
+          sources: ['telegram', 'mcp'],
+          kinds: ['event'],
+          eventAfter: Date.UTC(2026, 9, 21) / 1000,
+        },
         orderBy: 'event_at',
         direction: 'asc',
       },

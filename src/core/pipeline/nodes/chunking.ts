@@ -1,11 +1,26 @@
 import { logger } from '../../logging/logger.ts';
 import { chunkId } from '../../memory/id.ts';
-import { parseMemoryPayload } from '../../memory/payload.ts';
+import { parseMemoryPayload, type MemoryPayload } from '../../memory/payload.ts';
 import { splitText } from '../chunk.ts';
 import { requireEnrichment, requireStored } from '../state.ts';
 import type { IngestionStateType, IngestionUpdate } from '../state.ts';
 
 const log = logger.child({ module: 'pipeline/chunking' });
+
+export function chunkPayloads(parent: MemoryPayload): MemoryPayload[] {
+  const texts = splitText(parent.original_text);
+
+  const children = (texts.length === 0 ? [parent.original_text] : texts).map((text, index) =>
+    parseMemoryPayload({
+      ...parent,
+      id: chunkId(parent.id, index),
+      original_text: text,
+      chunking: { is_child: true, parent_id: parent.id },
+    }),
+  );
+
+  return [parent, ...children];
+}
 
 export function createChunkingNode() {
   return (state: IngestionStateType): IngestionUpdate => {
@@ -38,19 +53,10 @@ export function createChunkingNode() {
       chunking: { is_child: false },
     });
 
-    const texts = splitText(originalText);
+    const payloads = chunkPayloads(parent);
 
-    const children = (texts.length === 0 ? [originalText] : texts).map((text, index) =>
-      parseMemoryPayload({
-        ...shared,
-        id: chunkId(id, index),
-        original_text: text,
-        chunking: { is_child: true, parent_id: id },
-      }),
-    );
+    log.debug('chunked', { children: payloads.length - 1, chars: originalText.length });
 
-    log.debug('chunked', { children: children.length, chars: originalText.length });
-
-    return { payloads: [parent, ...children] };
+    return { payloads };
   };
 }

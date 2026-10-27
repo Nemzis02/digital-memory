@@ -5,7 +5,7 @@ const uuid = z.uuid().transform((value) => value as UUID);
 
 export const MEMORY_TYPES = ['text', 'photo', 'document', 'url', 'voice'] as const;
 
-export const MEMORY_SOURCES = ['telegram', 'mcp'] as const;
+export const MEMORY_SOURCES = ['telegram', 'mcp', 'eval'] as const;
 
 export const MEMORY_CATEGORIES = [
   'food',

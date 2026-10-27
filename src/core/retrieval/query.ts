@@ -1,7 +1,14 @@
 import type { UUID } from 'node:crypto';
 import type { Embeddings } from '../llm/embeddings.ts';
 import { logger } from '../logging/logger.ts';
-import type { MemoryCategory, MemoryKind, MemoryPayload, MemoryType } from '../memory/payload.ts';
+import {
+  MEMORY_SOURCES,
+  type MemoryCategory,
+  type MemoryKind,
+  type MemoryPayload,
+  type MemorySource,
+  type MemoryType,
+} from '../memory/payload.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, MemoryFilter, SearchHit, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND, type Citation } from './answer.ts';
@@ -16,6 +23,7 @@ const MAX_CHILDREN = 512;
 /** A normalised query: dates are epoch days and tags are slugs. */
 export interface QueryInput {
   query?: string;
+  sources?: MemorySource[];
   categories?: MemoryCategory[];
   kinds?: MemoryKind[];
   tags?: string[];
@@ -32,6 +40,7 @@ export interface QueryInput {
 function memoryFilter(input: QueryInput, isChild: boolean): MemoryFilter {
   return {
     isChild,
+    ...(input.sources === undefined ? {} : { sources: input.sources }),
     ...(input.categories === undefined ? {} : { categories: input.categories }),
     ...(input.kinds === undefined ? {} : { kinds: input.kinds }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
@@ -42,6 +51,10 @@ function memoryFilter(input: QueryInput, isChild: boolean): MemoryFilter {
     ...(input.createdAfter === undefined ? {} : { createdAfter: input.createdAfter }),
     ...(input.createdBefore === undefined ? {} : { createdBefore: input.createdBefore }),
   };
+}
+
+export function readableSources(source: MemorySource): MemorySource[] {
+  return source === 'eval' ? ['eval'] : MEMORY_SOURCES.filter((name) => name !== 'eval');
 }
 
 export async function recall(store: VectorStore, input: QueryInput): Promise<MemoryPayload[]> {
