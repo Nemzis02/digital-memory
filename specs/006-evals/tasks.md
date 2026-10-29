@@ -16,5 +16,5 @@ before it. Answers the stack audit: no eval harness, so quality changes are not 
       turn trace nests `turn`, the model steps, `search_memory` and the embeddings under
       `experiment-item-run`. SDK v6 has no `datasets.getRuns`; read runs through
       `api.experiments.list` and `api.experiments.listItems`.
-- [ ] Task 5: README section on evals with the baseline numbers, through `readme-updater`.
+- [x] Task 5: README section on evals with the baseline numbers, through `readme-updater`.
       `.gitignore` gets `evals/last-run.json`.

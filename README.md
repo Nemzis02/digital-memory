@@ -61,6 +61,31 @@ The agent cases also need `LLM_STRONG_API_KEY`.
 
 ---
 
+## 📏 Evals
+
+`npm run eval` scores the read path against the synthetic golden set in `evals/`: recall@5 for
+retrieval and tool-choice accuracy for the agent turn, per case and in total. Like
+`npm run test:live`, it is opt-in and spends real quota. It needs `LLM_FAST_API_KEY`,
+`LLM_STRONG_API_KEY` and `QDRANT_API_KEY`. It seeds the corpus into Qdrant with `source: 'eval'`
+and deletes those points at the end. It writes `evals/last-run.json` (git-ignored) and prints
+each case next to the baseline, with the delta. A drop does not fail the run.
+
+When the new scores are the ones to keep, `npm run eval:accept` copies the run into
+`evals/baseline.json`. Commit it with the change that caused it. With the Langfuse keys set, each
+run also appears in Langfuse as a dataset run.
+
+Accepted baseline, 2026-10-27, `claude-sonnet-5-5` and `gemini-embedding-2`:
+
+| Suite              | Score | Cases |
+| ------------------ | ----- | ----- |
+| Retrieval recall@5 | 0.95  | 40    |
+| Turn tool choice   | 0.89  | 27    |
+
+`npm test` checks the golden set and the scorers without calling a model. `evals/README.md` has
+the row formats and the steps to add a case.
+
+---
+
 ## 📁 Repository Structure
 
 ```text
@@ -69,6 +94,7 @@ digital-memory/
 ├── MEMORY.md                  # Dynamic log of pitfalls & edge-case learnings
 ├── docker-compose.yml         # Local PostgreSQL and Qdrant
 ├── drizzle/                   # Generated SQL migrations (committed)
+├── evals/                     # Synthetic golden set and the accepted baseline scores
 ├── docs/
 │   └── adr/                   # Architecture Decision Records (ADRs)
 ├── specs/                     # Feature Specifications (SDD workflow)
