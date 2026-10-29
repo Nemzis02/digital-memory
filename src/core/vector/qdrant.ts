@@ -118,14 +118,13 @@ function toFilter(filter: MemoryFilter | undefined): Schemas['Filter'] | undefin
   return must.length > 0 ? { must } : undefined;
 }
 
+export function createQdrantClient(env: Env = getEnv()): QdrantClient {
+  return new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY, timeout: 30_000 });
+}
+
 export function createQdrantStore(env: Env = getEnv()): VectorStore {
   const collection = env.QDRANT_COLLECTION;
-
-  const client = new QdrantClient({
-    url: env.QDRANT_URL,
-    apiKey: env.QDRANT_API_KEY,
-    timeout: 30_000,
-  });
+  const client = createQdrantClient(env);
 
   return {
     async init() {

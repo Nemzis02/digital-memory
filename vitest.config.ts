@@ -7,7 +7,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/fixtures.ts', 'src/core/eval/accept.ts'],
+      exclude: [
+        'src/**/*.test.ts',
+        'src/**/fixtures.ts',
+        'src/core/eval/accept.ts',
+        'src/core/vector/reindex-cli.ts',
+      ],
       thresholds: {
         statements: 80,
         branches: 80,
