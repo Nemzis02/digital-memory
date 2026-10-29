@@ -147,7 +147,6 @@ describe('recall', () => {
 });
 
 const DENSE = [0.2, 0.4];
-const SPARSE = { indices: [7], values: [1] };
 
 const paella: MemoryPayload = {
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
@@ -199,14 +198,12 @@ function hit(payload: MemoryPayload, score: number): SearchHit {
 function searching(options?: { hits?: readonly SearchHit[]; parents?: readonly MemoryPayload[] }): {
   deps: SearchDeps;
   embeds: { text: string; task: EmbedTask }[];
-  sparses: string[];
   searches: SearchQuery[];
   fetches: MemoryPayload['id'][][];
 } {
   const hits = options?.hits ?? [];
   const parents = options?.parents ?? [];
   const embeds: { text: string; task: EmbedTask }[] = [];
-  const sparses: string[] = [];
   const searches: SearchQuery[] = [];
   const fetches: MemoryPayload['id'][][] = [];
 
@@ -218,11 +215,6 @@ function searching(options?: { hits?: readonly SearchHit[]; parents?: readonly M
     },
     embedMany() {
       return Promise.reject(new Error('search embeds one query'));
-    },
-    embedSparse(text) {
-      sparses.push(text);
-
-      return SPARSE;
     },
   };
 
@@ -251,7 +243,7 @@ function searching(options?: { hits?: readonly SearchHit[]; parents?: readonly M
     },
   };
 
-  return { deps: { store, embeddings }, embeds, sparses, searches, fetches };
+  return { deps: { store, embeddings }, embeds, searches, fetches };
 }
 
 describe('search', () => {
@@ -272,10 +264,9 @@ describe('search', () => {
     expect(box.embeds).toStrictEqual([{ text: 'dentist', task: 'query' }]);
 
     expect(box.searches).toStrictEqual([
-      { dense: DENSE, sparse: SPARSE, limit: 10, filter: { isChild: true, kinds: ['event'] } },
+      { dense: DENSE, text: 'dentist', limit: 10, filter: { isChild: true, kinds: ['event'] } },
     ]);
 
-    expect(box.sparses).toStrictEqual(['dentist']);
     expect(box.fetches).toStrictEqual([[paella.id, dentist.id]]);
   });
 

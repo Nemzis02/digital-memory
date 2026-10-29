@@ -8,7 +8,6 @@ import type { ListQuery, SearchHit, SearchQuery, VectorStore } from '../vector/v
 // Test data and in-memory fakes shared by the agent tool and turn tests; not built or covered.
 
 export const DENSE = [0.2, 0.4];
-export const SPARSE = { indices: [7], values: [1] };
 
 export const tapas: MemoryPayload = {
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
@@ -117,9 +116,6 @@ export function memoryFakes(options?: FakeOptions) {
     },
     embedMany() {
       return Promise.reject(new Error('agent tools embed one query at a time'));
-    },
-    embedSparse() {
-      return SPARSE;
     },
   };
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseEnv } from '../../config/env.ts';
 import type { MemoryPayload } from '../memory/payload.ts';
-import { createQdrantStore, DENSE_VECTOR, SPARSE_VECTOR } from './qdrant.ts';
+import { createQdrantStore, DENSE_VECTOR, SPARSE_VECTOR, sparseDocument } from './qdrant.ts';
 import { DENSE_VECTOR_SIZE } from './vector-store.ts';
 
 interface Branch {
@@ -24,6 +24,10 @@ interface ScrollRequest {
   order_by?: { key: string; direction: string };
 }
 
+interface CollectionInfo {
+  config: { params: { sparse_vectors?: Record<string, unknown> } };
+}
+
 interface UpsertRequest {
   wait: boolean;
   points: { id: string; vector: Record<string, unknown>; payload: unknown }[];
@@ -33,6 +37,9 @@ const { api, clientParams } = vi.hoisted(() => ({
   api: {
     collectionExists: vi.fn<(name: string) => Promise<{ exists: boolean }>>(),
     createCollection: vi.fn<(name: string, request: Record<string, unknown>) => Promise<boolean>>(),
+    getCollection: vi.fn<(name: string) => Promise<CollectionInfo>>(),
+    createVectorName:
+      vi.fn<(name: string, vector: string, config: Record<string, unknown>) => Promise<unknown>>(),
     createPayloadIndex:
       vi.fn<(name: string, request: { field_name: string }) => Promise<unknown>>(),
     upsert: vi.fn<(name: string, request: UpsertRequest) => Promise<unknown>>(),
@@ -48,6 +55,8 @@ vi.mock('@qdrant/js-client-rest', () => ({
   QdrantClient: class {
     collectionExists = api.collectionExists;
     createCollection = api.createCollection;
+    getCollection = api.getCollection;
+    createVectorName = api.createVectorName;
     createPayloadIndex = api.createPayloadIndex;
     upsert = api.upsert;
     query = api.query;
@@ -86,7 +95,7 @@ const firstRequest = <T>(calls: [string, T][]): T => {
 
 const dense = (fill = 0.1): number[] => new Array<number>(DENSE_VECTOR_SIZE).fill(fill);
 
-const sparse = { indices: [7, 42], values: [1.2, 0.4] };
+const text = 'TIE appointment, Valencia, 3 March\n\ncita previa for the TIE in Valencia';
 
 const payload: MemoryPayload = {
   id: '3f0c6f0e-2d1a-4f6b-9f1e-8c4b2a7d5e10',
@@ -115,6 +124,12 @@ describe('createQdrantStore', () => {
 
     api.collectionExists.mockResolvedValue({ exists: false });
     api.createCollection.mockResolvedValue(true);
+
+    api.getCollection.mockResolvedValue({
+      config: { params: { sparse_vectors: { [SPARSE_VECTOR]: {} } } },
+    });
+
+    api.createVectorName.mockResolvedValue({});
     api.createPayloadIndex.mockResolvedValue({});
     api.upsert.mockResolvedValue({});
     api.query.mockResolvedValue({ points: [hit] });
@@ -160,42 +175,78 @@ describe('createQdrantStore', () => {
     await createQdrantStore(env).init();
 
     expect(api.createCollection).not.toHaveBeenCalled();
+    expect(api.createVectorName).not.toHaveBeenCalled();
     expect(api.createPayloadIndex).toHaveBeenCalled();
   });
 
-  it('writes the UUID as the point id and both vectors under their names', async () => {
-    await createQdrantStore(env).upsert([{ payload, dense: dense(), sparse }]);
+  it('adds the sparse vector to a collection that predates it', async () => {
+    api.collectionExists.mockResolvedValue({ exists: true });
+    api.getCollection.mockResolvedValue({ config: { params: { sparse_vectors: { bm25: {} } } } });
+
+    await createQdrantStore(env).init();
+
+    expect(api.createVectorName.mock.calls[0]).toStrictEqual([
+      'digital_memory',
+      SPARSE_VECTOR,
+      { sparse: { modifier: 'idf' } },
+    ]);
+  });
+
+  it('does not read the config of a collection it just created', async () => {
+    await createQdrantStore(env).init();
+
+    expect(api.getCollection).not.toHaveBeenCalled();
+    expect(api.createVectorName).not.toHaveBeenCalled();
+  });
+
+  it('writes the UUID as the point id and hands the text to the BM25 model', async () => {
+    await createQdrantStore(env).upsert([{ payload, dense: dense(), text }]);
 
     expect(firstRequest(api.upsert.mock.calls)).toStrictEqual({
       wait: true,
       points: [
-        { id: payload.id, vector: { [DENSE_VECTOR]: dense(), [SPARSE_VECTOR]: sparse }, payload },
+        {
+          id: payload.id,
+          vector: {
+            [DENSE_VECTOR]: dense(),
+            [SPARSE_VECTOR]: {
+              text,
+              model: 'qdrant/bm25',
+              options: { k: 1.2, b: 0.75, avg_len: 256 },
+            },
+          },
+          payload,
+        },
       ],
     });
   });
 
-  it('omits the sparse vector rather than sending an empty one', async () => {
-    await createQdrantStore(env).upsert([{ payload, dense: dense() }]);
+  it('refuses blank keyword text before spending a request', async () => {
+    const store = createQdrantStore(env);
 
-    expect(firstRequest(api.upsert.mock.calls).points[0]?.vector).toStrictEqual({
-      [DENSE_VECTOR]: dense(),
-    });
+    await expect(store.upsert([{ payload, dense: dense(), text: ' \n ' }])).rejects.toThrow(
+      /blank text/,
+    );
+
+    await expect(store.search({ dense: dense(), text: '' })).rejects.toThrow(/blank text/);
+    expect(api.upsert).not.toHaveBeenCalled();
+    expect(api.query).not.toHaveBeenCalled();
   });
 
   it('rejects a payload the store could not filter on before it is written', async () => {
     const broken = { ...payload, metadata: { ...payload.metadata, category: 'sports' } };
 
     await expect(
-      createQdrantStore(env).upsert([{ payload: broken as MemoryPayload, dense: dense() }]),
+      createQdrantStore(env).upsert([{ payload: broken as MemoryPayload, dense: dense(), text }]),
     ).rejects.toThrow(TypeError);
 
     expect(api.upsert).not.toHaveBeenCalled();
   });
 
   it('rejects an embedding of the wrong width instead of letting Qdrant 400', async () => {
-    await expect(createQdrantStore(env).upsert([{ payload, dense: [0.1, 0.2] }])).rejects.toThrow(
-      /does not match/,
-    );
+    await expect(
+      createQdrantStore(env).upsert([{ payload, dense: [0.1, 0.2], text }]),
+    ).rejects.toThrow(/does not match/);
 
     expect(api.upsert).not.toHaveBeenCalled();
   });
@@ -213,12 +264,12 @@ describe('createQdrantStore', () => {
   });
 
   it('fuses the two branches with RRF and over-fetches each one', async () => {
-    const hits = await createQdrantStore(env).search({ dense: dense(), sparse, limit: 5 });
+    const hits = await createQdrantStore(env).search({ dense: dense(), text: 'cita', limit: 5 });
 
     expect(firstRequest(api.query.mock.calls)).toStrictEqual({
       prefetch: [
         { query: { nearest: dense() }, using: DENSE_VECTOR, limit: 20 },
-        { query: { nearest: sparse }, using: SPARSE_VECTOR, limit: 20 },
+        { query: { nearest: sparseDocument('cita') }, using: SPARSE_VECTOR, limit: 20 },
       ],
       query: { fusion: 'rrf' },
       limit: 5,
@@ -231,7 +282,7 @@ describe('createQdrantStore', () => {
   it('repeats the filter on every branch, since fusion only merges what each returned', async () => {
     await createQdrantStore(env).search({
       dense: dense(),
-      sparse,
+      text: 'paella',
       filter: { categories: ['food'], tags: ['#paella'], createdAfter: 1_700_000_000 },
     });
 

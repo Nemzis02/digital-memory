@@ -3,7 +3,6 @@ import { embedMany as embedManyValues } from 'ai';
 import type { Env } from '../../config/env.ts';
 import { getEnv } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
-import type { SparseVector } from '../vector/vector-store.ts';
 import { DENSE_VECTOR_SIZE } from '../vector/vector-store.ts';
 
 const log = logger.child({ module: 'llm/embeddings' });
@@ -15,41 +14,12 @@ export type EmbedTask = 'document' | 'query';
 export interface Embeddings {
   embed(text: string, task: EmbedTask): Promise<number[]>;
   embedMany(texts: readonly string[], task: EmbedTask): Promise<number[][]>;
-  embedSparse(text: string): SparseVector;
 }
 
 const TASK_PREFIX = {
   document: (text: string) => `title: none | text: ${text}`,
   query: (text: string) => `task: search result | query: ${text}`,
 } as const satisfies Record<EmbedTask, (text: string) => string>;
-
-function fnv1a(token: string): number {
-  let hash = 0x811c9dc5;
-
-  for (let i = 0; i < token.length; i++) {
-    hash ^= token.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-
-  return hash >>> 0;
-}
-
-export function embedSparse(text: string): SparseVector {
-  const counts = new Map<number, number>();
-
-  for (const match of text.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
-    const index = fnv1a(match[0]);
-    counts.set(index, (counts.get(index) ?? 0) + 1);
-  }
-
-  if (counts.size === 0) {
-    throw new TypeError('Cannot embed blank text');
-  }
-
-  const indices = [...counts.keys()].sort((a, b) => a - b);
-
-  return { indices, values: indices.map((index) => counts.get(index) ?? 0) };
-}
 
 function requireText(text: string): string {
   if (text.trim().length === 0) {
@@ -101,7 +71,7 @@ export function createEmbeddings(env: Env = getEnv()): Embeddings {
     return vector ?? fitted(undefined, 0);
   }
 
-  return { embed, embedMany, embedSparse };
+  return { embed, embedMany };
 }
 
 let shared: Embeddings | undefined;

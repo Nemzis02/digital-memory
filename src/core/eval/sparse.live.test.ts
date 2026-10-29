@@ -12,7 +12,7 @@ import { loadDataset } from './dataset.ts';
 import { recallAtK } from './score.ts';
 import { seedCorpus } from './seed.ts';
 
-// Compares the hashed sparse vector with Qdrant's server-side BM25 on the golden set.
+// Compares the retired hashed sparse vector with Qdrant's server-side BM25 on the golden set.
 // It writes only to a temporary collection, never to QDRANT_COLLECTION.
 
 const KEYS = ['LLM_FAST_API_KEY', 'QDRANT_API_KEY'] as const;
@@ -27,8 +27,34 @@ const BATCH = 64;
 const SEED_TIMEOUT = 180_000;
 const CASE_TIMEOUT = 30_000;
 const BM25_MODEL = 'qdrant/bm25';
+const HASHED_VECTOR = 'bm25';
 
 const dataset = await loadDataset();
+
+function fnv1a(token: string): number {
+  let hash = 0x811c9dc5;
+
+  for (let i = 0; i < token.length; i++) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return hash >>> 0;
+}
+
+// The baseline this harness measures against: the hashed term count the bot used to index.
+function hashedSparse(text: string): Schemas['SparseVector'] {
+  const counts = new Map<number, number>();
+
+  for (const match of text.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
+    const index = fnv1a(match[0]);
+    counts.set(index, (counts.get(index) ?? 0) + 1);
+  }
+
+  const indices = [...counts.keys()].sort((a, b) => a - b);
+
+  return { indices, values: indices.map((index) => counts.get(index) ?? 0) };
+}
 
 type Bm25Options = Schemas['Bm25Config'];
 
@@ -39,8 +65,8 @@ interface Variant {
 }
 
 const variants: Variant[] = [
-  { name: 'hashed', using: SPARSE_VECTOR },
-  { name: 'bm25', using: 'bm25_v2', options: {} },
+  { name: 'hashed', using: HASHED_VECTOR },
+  { name: 'bm25', using: SPARSE_VECTOR, options: {} },
   { name: 'bm25-avg-len', using: 'bm25_v2_len', options: {} },
 ];
 
@@ -75,7 +101,7 @@ function wordCount(text: string): number {
 
 function sparseQuery(variant: Variant, query: string): Schemas['VectorInput'] {
   if (variant.options === undefined) {
-    return embeddings().embedSparse(query);
+    return hashedSparse(query);
   }
 
   return { text: query, model: BM25_MODEL, options: variant.options };
@@ -159,11 +185,12 @@ describe.skipIf(!live)('sparse encoder comparison', () => {
         points: payloads.slice(start, start + BATCH).map((payload) => ({
           id: payload.id,
           vector: Object.fromEntries(
-            variants.flatMap(({ using, options }): [string, Schemas['Document']][] =>
+            variants.map(({ using, options }): [string, Schemas['Vector']] => [
+              using,
               options === undefined
-                ? []
-                : [[using, { text: embeddableText(payload), model: BM25_MODEL, options }]],
-            ),
+                ? hashedSparse(embeddableText(payload))
+                : { text: embeddableText(payload), model: BM25_MODEL, options },
+            ]),
           ),
         })),
       });

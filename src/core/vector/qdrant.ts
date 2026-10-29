@@ -11,7 +11,6 @@ import type {
   MemoryRecord,
   SearchHit,
   SearchQuery,
-  SparseVector,
   VectorStore,
 } from './vector-store.ts';
 import { DENSE_VECTOR_SIZE } from './vector-store.ts';
@@ -19,8 +18,25 @@ import { DENSE_VECTOR_SIZE } from './vector-store.ts';
 const log = logger.child({ module: 'vector/qdrant' });
 
 export const DENSE_VECTOR = 'dense';
-export const SPARSE_VECTOR = 'bm25';
+export const SPARSE_VECTOR = 'bm25_v2';
+const SPARSE_CONFIG = { modifier: 'idf' } as const;
 const DEFAULT_LIMIT = 10;
+
+// Qdrant computes BM25 server-side. The options are pinned so every write and query agrees;
+// a lower avg_len lets a one-word memory outrank real hits on a filler word.
+const BM25 = {
+  model: 'qdrant/bm25',
+  options: { k: 1.2, b: 0.75, avg_len: 256 } satisfies Schemas['Bm25Config'],
+} as const;
+
+export function sparseDocument(text: string): Schemas['Document'] {
+  if (text.trim().length === 0) {
+    throw new TypeError('Cannot embed blank text');
+  }
+
+  return { text, ...BM25 };
+}
+
 const PREFETCH_FACTOR = 4;
 
 const PAYLOAD_INDEXES = {
@@ -118,10 +134,18 @@ export function createQdrantStore(env: Env = getEnv()): VectorStore {
       if (!exists) {
         await client.createCollection(collection, {
           vectors: { [DENSE_VECTOR]: { size: DENSE_VECTOR_SIZE, distance: 'Cosine' } },
-          sparse_vectors: { [SPARSE_VECTOR]: { modifier: 'idf' } },
+          sparse_vectors: { [SPARSE_VECTOR]: SPARSE_CONFIG },
         });
 
         log.info('collection created', { collection, size: DENSE_VECTOR_SIZE });
+      } else {
+        const { config } = await client.getCollection(collection);
+
+        if (!(SPARSE_VECTOR in (config.params.sparse_vectors ?? {}))) {
+          await client.createVectorName(collection, SPARSE_VECTOR, { sparse: SPARSE_CONFIG });
+
+          log.info('sparse vector added', { collection, name: SPARSE_VECTOR });
+        }
       }
 
       for (const [field_name, field_schema] of Object.entries(PAYLOAD_INDEXES)) {
@@ -143,11 +167,10 @@ export function createQdrantStore(env: Env = getEnv()): VectorStore {
           );
         }
 
-        const vector: Record<string, number[] | SparseVector> = { [DENSE_VECTOR]: record.dense };
-
-        if (record.sparse !== undefined) {
-          vector[SPARSE_VECTOR] = record.sparse;
-        }
+        const vector = {
+          [DENSE_VECTOR]: record.dense,
+          [SPARSE_VECTOR]: sparseDocument(record.text),
+        };
 
         return { id: payload.id, vector, payload };
       });
@@ -167,14 +190,18 @@ export function createQdrantStore(env: Env = getEnv()): VectorStore {
         branches.push({ query: { nearest: query.dense }, using: DENSE_VECTOR, ...scope });
       }
 
-      if (query.sparse !== undefined) {
-        branches.push({ query: { nearest: query.sparse }, using: SPARSE_VECTOR, ...scope });
+      if (query.text !== undefined) {
+        branches.push({
+          query: { nearest: sparseDocument(query.text) },
+          using: SPARSE_VECTOR,
+          ...scope,
+        });
       }
 
       const [only] = branches;
 
       if (only === undefined) {
-        throw new TypeError('A search needs a dense vector, a sparse vector, or both');
+        throw new TypeError('A search needs a dense vector, a keyword text, or both');
       }
 
       const request: Schemas['QueryRequest'] =

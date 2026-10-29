@@ -118,11 +118,10 @@ function inHitOrder(ids: readonly UUID[], payloads: readonly MemoryPayload[]): M
 export async function search(deps: SearchDeps, input: QueryInput): Promise<MemoryPayload[]> {
   const query = requireQuery(input);
   const dense = await deps.embeddings.embed(query, 'query');
-  const sparse = deps.embeddings.embedSparse(query);
 
   const hits = await deps.store.search({
     dense,
-    sparse,
+    text: query,
     limit: SEARCH_LIMIT,
     filter: memoryFilter(input, true),
   });

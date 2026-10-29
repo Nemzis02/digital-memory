@@ -38,7 +38,7 @@ export async function embedRecords(
       throw new Error(`No embedding was returned for ${payload.id}`);
     }
 
-    return { payload, dense: vector, sparse: embeddings.embedSparse(text) };
+    return { payload, dense: vector, text };
   });
 
   return { records, embedded: unique.length };

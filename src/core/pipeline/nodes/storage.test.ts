@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Embeddings } from '../../llm/embeddings.ts';
-import { embedSparse } from '../../llm/embeddings.ts';
 import { parseMemoryPayload } from '../../memory/payload.ts';
 import type { MemoryPayload } from '../../memory/payload.ts';
 import type { MemoryRecord, VectorStore } from '../../vector/vector-store.ts';
@@ -65,7 +64,6 @@ function deps(): {
 
         return Promise.resolve(texts.map((_, index) => [index]));
       },
-      embedSparse,
     },
   };
 }
@@ -94,7 +92,7 @@ describe('embedRecords', () => {
 
     expect(embedded).toBe(2);
     expect(records.map((record) => record.dense)).toStrictEqual([[0], [0], [1]]);
-    expect(records[2]?.sparse).toStrictEqual(embedSparse(embeddableText(other)));
+    expect(records[2]?.text).toBe(embeddableText(other));
   });
 });
 

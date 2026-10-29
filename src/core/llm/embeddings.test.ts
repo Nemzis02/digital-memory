@@ -3,13 +3,7 @@ import { MockEmbeddingModelV4 } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseEnv, resetEnvCache } from '../../config/env.ts';
 import { DENSE_VECTOR_SIZE } from '../vector/vector-store.ts';
-import {
-  createEmbeddings,
-  EMBEDDING_MODEL,
-  embeddings,
-  embedSparse,
-  resetEmbeddings,
-} from './embeddings.ts';
+import { createEmbeddings, EMBEDDING_MODEL, embeddings, resetEmbeddings } from './embeddings.ts';
 
 const gate = vi.hoisted(() => ({
   googleParams: [] as { apiKey?: string }[],
@@ -71,25 +65,6 @@ function installEmbedding(
 
 const sentValues = (model: MockEmbeddingModelV4): string[] =>
   model.doEmbedCalls.flatMap((call: EmbeddingModelV4CallOptions) => call.values);
-
-describe('embedSparse', () => {
-  it('folds case and counts repeated tokens', () => {
-    expect(embedSparse('Valencia Valencia')).toEqual(embedSparse('valencia valencia'));
-    expect(embedSparse('Valencia Valencia').values).toEqual([2]);
-  });
-
-  it('keeps accented words intact and returns indices in ascending order', () => {
-    const vector = embedSparse('beta niño niño alpha');
-
-    expect(vector.indices).toHaveLength(3);
-    expect(vector.indices).toEqual([...vector.indices].sort((a, b) => a - b));
-    expect(vector.values.reduce((sum, value) => sum + value, 0)).toBe(4);
-  });
-
-  it('rejects text that contains no tokens', () => {
-    expect(() => embedSparse('... ---')).toThrow(/blank text/);
-  });
-});
 
 describe('createEmbeddings', () => {
   beforeEach(() => {

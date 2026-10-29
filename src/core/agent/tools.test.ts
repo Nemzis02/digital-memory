@@ -9,7 +9,6 @@ import {
   MESSAGE,
   page,
   SAVED,
-  SPARSE,
   tapas,
   type FakeOptions,
 } from './fixtures.ts';
@@ -63,7 +62,7 @@ describe('search_memory', () => {
     expect(box.searches).toStrictEqual([
       {
         dense: DENSE,
-        sparse: SPARSE,
+        text: 'dentist',
         limit: 10,
         filter: {
           isChild: true,

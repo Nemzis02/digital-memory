@@ -1,7 +1,6 @@
 import type { UUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { Embeddings } from '../llm/embeddings.ts';
-import { embedSparse } from '../llm/embeddings.ts';
 import { chunkId, memoryId } from '../memory/id.ts';
 import type { MemoryPayload } from '../memory/payload.ts';
 import type { ListQuery, MemoryRecord, VectorStore } from '../vector/vector-store.ts';
@@ -67,7 +66,6 @@ function fakeStore(initial: MemoryPayload[] = []) {
 const embeddings: Embeddings = {
   embed: () => Promise.reject(new Error('seeding embeds documents only')),
   embedMany: (texts) => Promise.resolve(texts.map((_, index) => [index])),
-  embedSparse,
 };
 
 describe('corpusPayloads', () => {

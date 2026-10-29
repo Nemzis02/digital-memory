@@ -9,15 +9,11 @@ import type {
 
 export const DENSE_VECTOR_SIZE = 1536;
 
-export interface SparseVector {
-  indices: number[];
-  values: number[];
-}
-
 export interface MemoryRecord {
   payload: MemoryPayload;
   dense: number[];
-  sparse?: SparseVector;
+  // The text the dense vector was built from; the store derives the sparse vector from it.
+  text: string;
 }
 
 export interface MemoryFilter {
@@ -39,7 +35,7 @@ export interface MemoryFilter {
 
 export interface SearchQuery {
   dense?: number[];
-  sparse?: SparseVector;
+  text?: string;
   filter?: MemoryFilter;
   limit?: number;
 }

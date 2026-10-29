@@ -2,7 +2,6 @@ import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundMessage } from '../ingestion/inbound.ts';
 import type { Embeddings } from '../llm/embeddings.ts';
-import { embedSparse } from '../llm/embeddings.ts';
 import type { ChatModel, CompletionRequest, LlmRouter, ModelRole } from '../llm/router.ts';
 import { chunkId, memoryId } from '../memory/id.ts';
 import type { ObjectStorage, UploadInput } from '../storage/object-storage.ts';
@@ -127,7 +126,6 @@ function fakeEmbeddings(): Embeddings & { batches: readonly string[][] } {
         texts.map((text) => Array.from({ length: DENSE_VECTOR_SIZE }, () => text.length)),
       );
     },
-    embedSparse,
   };
 }
 
@@ -264,7 +262,7 @@ describe('createIngestionPipeline', () => {
     expect(embeddings.batches).toHaveLength(1);
     expect(embeddings.batches[0]).toHaveLength(1);
     expect(store.records[0]?.dense).toEqual(store.records[1]?.dense);
-    expect(store.records[0]?.sparse?.indices.length).toBeGreaterThan(0);
+    expect(store.records[0]?.text).toContain('Tapas at Bar Pepe.');
   });
 
   it('leads the embedded text with the summary so an empty extraction stays searchable', async () => {
