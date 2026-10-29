@@ -38,3 +38,10 @@
 {"key":"japan-filter","query":"everything about the Japan trip","expected":["japan-flight","kyoto-article","travel-fund-idea"]}
 {"key":"no-answer-piano","query":"piano lessons","expected":[]}
 {"key":"no-answer-sailing","query":"sailing licence exam","expected":[]}
+{"key":"dentists-keyword","query":"dentists","expected":["dentist","dentist-duplicate"]}
+{"key":"receipts-keyword","query":"receipts","expected":["coffee-receipt","bike-repair-receipt","ikea-receipt"]}
+{"key":"plumbers-keyword","query":"plumbers","expected":["plumber-recommendation"]}
+{"key":"recommendations-keyword","query":"recommendations","expected":["plumber-recommendation","physio-recommendation","book-recommendation"]}
+{"key":"inspections-keyword","query":"inspections","expected":["meter-inspection","car-itv"]}
+{"key":"umbrella-filler-keyword","query":"forget the note about the umbrella","expected":["lost-umbrella"]}
+{"key":"wifi-filler-keyword","query":"delete that note about the wifi","expected":["wifi-password"]}

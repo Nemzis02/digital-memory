@@ -29,7 +29,7 @@ The corpus is synthetic and written for this file: no real personal memory is co
 It covers each `kind` and `category` the enrichment prompt uses, dated events, a saved web
 page, a near-duplicate pair, and one memory whose text says "ignore previous instructions".
 
-`retrieval.jsonl` has 30-40 queries: keyword-like ("dentist"), paraphrase ("when is my teeth
+`retrieval.jsonl` has 30-50 queries: keyword-like ("dentist"), paraphrase ("when is my teeth
 appointment"), filter-like ("restaurants in Valencia"), and two with no right answer, which
 score on returning nothing relevant in the top 5.
 

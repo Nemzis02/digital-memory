@@ -1,9 +1,8 @@
 # Implementation Tasks: 007 Real BM25 Sparse Vectors
 
-Blocked on spec 006 Task 3: the decision needs a recall baseline. Answers the stack audit:
-the `bm25` sparse vector is a hashed term count, not BM25.
+Answers the stack audit: the `bm25` sparse vector is a hashed term count, not BM25.
 
-- [ ] Task 1: Check local Qdrant BM25 inference and the JS encoder options. Measure recall@5
+- [x] Task 1: Check local Qdrant BM25 inference and the JS encoder options. Measure recall@5
       for each viable option. Write ADR 006 with the numbers and the choice.
 - [ ] Task 2: The new sparse path in embeddings and the Qdrant store, under a new vector name.
       Tests.

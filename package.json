@@ -26,6 +26,7 @@
     "test:coverage": "vitest run --coverage",
     "eval": "LLM_LIVE=1 node --env-file=.env ./node_modules/vitest/vitest.mjs run src/core/eval/run.live.test.ts",
     "eval:accept": "node src/core/eval/accept.ts",
+    "eval:sparse": "LLM_LIVE=1 node --env-file=.env ./node_modules/vitest/vitest.mjs run src/core/eval/sparse.live.test.ts",
     "test:live": "LLM_LIVE=1 INGEST_LIVE=1 node --env-file=.env ./node_modules/vitest/vitest.mjs run src/core/llm/live.test.ts src/core/pipeline/live.test.ts src/core/agent/live.test.ts",
     "prepare": "husky",
     "commit": "czg"

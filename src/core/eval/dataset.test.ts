@@ -219,7 +219,7 @@ describe('the committed golden set', () => {
     expect(corpus.length).toBeGreaterThanOrEqual(40);
     expect(corpus.length).toBeLessThanOrEqual(60);
     expect(retrieval.length).toBeGreaterThanOrEqual(30);
-    expect(retrieval.length).toBeLessThanOrEqual(40);
+    expect(retrieval.length).toBeLessThanOrEqual(50);
     expect(turns.length).toBeGreaterThanOrEqual(20);
     expect(turns.length).toBeLessThanOrEqual(30);
   });
