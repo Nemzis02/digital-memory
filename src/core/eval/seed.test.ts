@@ -31,6 +31,7 @@ function fakeStore(initial: MemoryPayload[] = []) {
 
   const store: VectorStore = {
     init: () => Promise.resolve(),
+    ping: () => Promise.resolve(),
     upsert(records) {
       upserts.push(records);
 

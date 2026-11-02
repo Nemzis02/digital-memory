@@ -53,6 +53,33 @@ npm run dev
 `npm run dev` creates the Qdrant collection and the LangGraph checkpoint tables itself, both
 idempotently. `npm test` needs no services and no keys.
 
+`npm run test:integration` runs the `*.int.test.ts` files against the services from `npm run db:up`:
+migrations on an empty database, the conversation store, the Qdrant collection setup and the
+readiness route. Each run creates its own database and collection and drops them afterwards, so
+the development data is untouched. It needs `DATABASE_URL`, `QDRANT_URL` and `QDRANT_API_KEY` and
+stops at once without them. CI runs the same suite against service containers.
+
+### Run with the image
+
+Every push to `master` publishes `ghcr.io/nemzis02/digital-memory`, tagged `sha-<commit>`, and a
+`v*` tag adds the version. The image reads its configuration from the environment only; the
+platform injects the same variables as `.env`, and no `.env` file is copied in. Run the migrator
+before the first start of a new version, then start the process:
+
+```bash
+node dist/core/db/migrate-cli.js   # once per deploy, from inside the image
+node dist/index.js                 # the image CMD
+```
+
+`GET /healthz` returns 200 while the process runs. `GET /readyz` returns 200 only when Postgres
+and Qdrant both answer within 2 seconds, and otherwise 503 with
+`{"postgres":"ok"|"down","qdrant":"ok"|"down"}`. Neither route needs authentication, and neither
+reveals hosts, versions or error text.
+
+To try the image locally, build it with `podman build -t digital-memory .` and point
+`DATABASE_URL` and `QDRANT_URL` at `host.containers.internal`. Podman's `--env-file` keeps the
+quotes that Node's `.env` loader strips, so pass quoted values without the quotes.
+
 `npm run reindex` adds the BM25 sparse vector to every stored point that lacks it and drops the
 retired hashed vector from the collection. It is idempotent and safe while the bot runs. Run it
 once per collection after a sparse vector change.
@@ -96,6 +123,7 @@ the row formats and the steps to add a case.
 digital-memory/
 ├── AGENTS.md                  # Universal Operational Rules for AI Agents
 ├── MEMORY.md                  # Dynamic log of pitfalls & edge-case learnings
+├── Dockerfile                 # Production image, published to GHCR on push to master
 ├── docker-compose.yml         # Local PostgreSQL and Qdrant
 ├── drizzle/                   # Generated SQL migrations (committed)
 ├── evals/                     # Synthetic golden set and the accepted baseline scores

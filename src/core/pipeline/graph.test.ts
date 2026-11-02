@@ -83,6 +83,9 @@ function fakeStore(): VectorStore & { records: MemoryRecord[] } {
     init() {
       return Promise.resolve();
     },
+    ping() {
+      return Promise.resolve();
+    },
     upsert(batch) {
       records.push(...batch);
 

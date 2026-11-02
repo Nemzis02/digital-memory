@@ -1,10 +1,9 @@
 import { webhookCallback } from 'grammy';
 import type { Bot } from 'grammy';
-import type { Server } from 'node:http';
 import type { Update } from 'grammy/types';
 import { logger } from '../core/logging/logger.ts';
-import { createHttpServer } from '../http/server.ts';
-import { createWebhookServer, telegramWebhookUrl } from './webhook.ts';
+import type { HttpRoute } from '../http/server.ts';
+import { telegramWebhookRoute, telegramWebhookUrl } from './webhook.ts';
 
 const log = logger.child({ module: 'bot/listen' });
 
@@ -16,9 +15,9 @@ export interface ListenOptions {
   webhookSecret?: string | undefined;
 }
 
-export function telegramServer(bot: Bot, options: ListenOptions): Server {
+export function telegramRoutes(bot: Bot, options: ListenOptions): HttpRoute[] {
   if (options.publicUrl === undefined) {
-    return createHttpServer([]);
+    return [];
   }
 
   const secret = options.webhookSecret;
@@ -27,13 +26,15 @@ export function telegramServer(bot: Bot, options: ListenOptions): Server {
     throw new Error('TELEGRAM_WEBHOOK_SECRET is required once PUBLIC_URL is set');
   }
 
-  return createWebhookServer({
-    secret,
-    handle: webhookCallback(bot, 'http', {
-      secretToken: secret,
-      timeoutMilliseconds: 30_000,
+  return [
+    telegramWebhookRoute({
+      secret,
+      handle: webhookCallback(bot, 'http', {
+        secretToken: secret,
+        timeoutMilliseconds: 30_000,
+      }),
     }),
-  });
+  ];
 }
 
 export async function activateTelegram(bot: Bot, options: ListenOptions): Promise<void> {

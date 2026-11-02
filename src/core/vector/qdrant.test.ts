@@ -138,6 +138,17 @@ describe('createQdrantStore', () => {
     api.delete.mockResolvedValue({});
   });
 
+  it('ping asks for the collection and reports a missing one as down', async () => {
+    const store = createQdrantStore(env);
+
+    await expect(store.ping()).resolves.toBeUndefined();
+    expect(api.getCollection).toHaveBeenCalledWith(env.QDRANT_COLLECTION);
+
+    api.getCollection.mockRejectedValue(new Error('Not found'));
+
+    await expect(store.ping()).rejects.toThrow('Not found');
+  });
+
   it('passes the configured URL, key, and collection through', async () => {
     await createQdrantStore(env).init();
 

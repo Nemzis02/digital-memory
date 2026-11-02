@@ -46,6 +46,7 @@ function deps(): {
     store: {
       records,
       init: () => Promise.resolve(),
+      ping: () => Promise.resolve(),
       upsert(batch) {
         records.push(...batch);
 

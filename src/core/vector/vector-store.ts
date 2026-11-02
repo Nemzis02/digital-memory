@@ -55,6 +55,7 @@ export interface SearchHit {
 
 export interface VectorStore {
   init(): Promise<void>;
+  ping(): Promise<void>;
   upsert(records: MemoryRecord[]): Promise<void>;
   search(query: SearchQuery): Promise<SearchHit[]>;
   // Ordering by a field also drops records that lack it, which is what "upcoming" needs.

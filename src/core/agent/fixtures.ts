@@ -123,6 +123,9 @@ export function memoryFakes(options?: FakeOptions) {
     init() {
       return Promise.resolve();
     },
+    ping() {
+      return Promise.resolve();
+    },
     upsert() {
       return Promise.resolve();
     },

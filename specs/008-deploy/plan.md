@@ -28,10 +28,11 @@ Check that `dist/index.js` resolves every import with `--omit=dev`, because Node
 stripping is a dev-time path and the build output must stand alone. `.dockerignore` excludes
 `.env*`, `node_modules`, `coverage`, `.git`.
 
-Migrations do not run on boot. A deploy runs `npx drizzle-kit migrate` as a separate step,
-because `drizzle-kit` is a dev dependency; document this in the README. If that is too awkward,
-switch to the runtime migrator from `drizzle-orm/node-postgres/migrator` behind an explicit
-`npm run migrate`, and record the choice in MEMORY.md.
+Migrations do not run on boot. `drizzle-kit` is a dev dependency, so an `--omit=dev` image
+cannot run it; `src/core/db/migrate-cli.ts` wraps the runtime migrator from
+`drizzle-orm/node-postgres/migrator` instead. `npm run db:migrate` calls it in development and
+`node dist/core/db/migrate-cli.js` is the deploy step, run before the first start of a new
+version. Both tools share the `drizzle.__drizzle_migrations` table.
 
 ## 2. Health
 
@@ -58,7 +59,8 @@ delete round-trip one memory; `/readyz` returns 200 against both and 503 with Qd
   fails if `git status --porcelain drizzle/` is not empty.
 - New `integration` job with GitHub Actions `services:` for `postgres:16-alpine` and
   `qdrant/qdrant` at the version in `docker-compose.yml`, health-checked. Runs
-  `npm run db:migrate`, then `npm run test:integration`.
+  `npm run test:integration`; each test creates and migrates its own database, so no migrate
+  step precedes it.
 - `image.yml`: on push to `master` and on release tags. `docker/setup-buildx-action`,
   `docker/login-action` to `ghcr.io` with `GITHUB_TOKEN`, `docker/build-push-action` with
   `cache-from/cache-to: type=gha`, tags `sha-<short>` and the version. Permissions:

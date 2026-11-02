@@ -2,7 +2,7 @@ import './config/load-env.ts';
 import { Api } from 'grammy';
 import { getEnv } from './config/env.ts';
 import { createConversationLog } from './core/conversation/store.ts';
-import { closeDatabase } from './core/db/client.ts';
+import { closeDatabase, ping } from './core/db/client.ts';
 import { runTurn } from './core/agent/turn.ts';
 import { embeddings } from './core/llm/embeddings.ts';
 import { llmRouter } from './core/llm/router.ts';
@@ -65,6 +65,7 @@ async function main(): Promise<void> {
     port: env.PORT,
     publicUrl: env.PUBLIC_URL,
     webhookSecret: env.TELEGRAM_WEBHOOK_SECRET,
+    checks: { postgres: () => ping(), qdrant: () => store.ping() },
   });
 
   let stopping = false;

@@ -4,6 +4,7 @@ import pg from 'pg';
 import type { Env } from '../../config/env.ts';
 import { getEnv } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
+import { PING_TIMEOUT_MS, withinDeadline } from '../readiness.ts';
 import * as schema from './schema.ts';
 
 const log = logger.child({ module: 'db/client' });
@@ -39,6 +40,10 @@ export function database(): Database {
   sharedDatabase ??= drizzle(pool(), { schema });
 
   return sharedDatabase;
+}
+
+export async function ping(client: pg.Pool = pool(), timeoutMs = PING_TIMEOUT_MS): Promise<void> {
+  await withinDeadline(client.query('SELECT 1'), timeoutMs, 'postgres');
 }
 
 export async function closeDatabase(): Promise<void> {

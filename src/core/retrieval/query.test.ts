@@ -42,6 +42,9 @@ function recordingStore(results: readonly MemoryPayload[] = [parent]): VectorSto
     init() {
       return Promise.resolve();
     },
+    ping() {
+      return Promise.resolve();
+    },
     upsert() {
       return Promise.resolve();
     },
@@ -220,6 +223,9 @@ function searching(options?: { hits?: readonly SearchHit[]; parents?: readonly M
 
   const store: VectorStore = {
     init() {
+      return Promise.resolve();
+    },
+    ping() {
       return Promise.resolve();
     },
     upsert() {
@@ -417,6 +423,9 @@ function forgetting(options?: {
 
   const store: VectorStore = {
     init() {
+      return Promise.resolve();
+    },
+    ping() {
       return Promise.resolve();
     },
     upsert() {

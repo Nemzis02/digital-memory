@@ -3,6 +3,7 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import type { Env } from '../../config/env.ts';
 import { getEnv } from '../../config/env.ts';
 import { logger } from '../logging/logger.ts';
+import { PING_TIMEOUT_MS, withinDeadline } from '../readiness.ts';
 import type { MemoryPayload } from '../memory/payload.ts';
 import { parseMemoryPayload } from '../memory/payload.ts';
 import type {
@@ -39,7 +40,7 @@ export function sparseDocument(text: string): Schemas['Document'] {
 
 const PREFETCH_FACTOR = 4;
 
-const PAYLOAD_INDEXES = {
+export const PAYLOAD_INDEXES = {
   type: 'keyword',
   source: 'keyword',
   source_ref: 'keyword',
@@ -150,6 +151,10 @@ export function createQdrantStore(env: Env = getEnv()): VectorStore {
       for (const [field_name, field_schema] of Object.entries(PAYLOAD_INDEXES)) {
         await client.createPayloadIndex(collection, { field_name, field_schema, wait: true });
       }
+    },
+
+    async ping() {
+      await withinDeadline(client.getCollection(collection), PING_TIMEOUT_MS, 'qdrant');
     },
 
     async upsert(records) {

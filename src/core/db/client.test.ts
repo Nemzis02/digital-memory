@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseEnv, resetEnvCache } from '../../config/env.ts';
-import { closeDatabase, createPool, database, pool } from './client.ts';
+import { closeDatabase, createPool, database, ping, pool } from './client.ts';
 import { oauthAuthorizationCodes, oauthTokens, users } from './schema.ts';
 
-const { poolConfigs, endMock, handlers } = vi.hoisted(() => ({
+const { poolConfigs, endMock, queryMock, handlers } = vi.hoisted(() => ({
   poolConfigs: [] as Record<string, unknown>[],
   endMock: vi.fn<() => Promise<void>>(),
+  queryMock: vi.fn<(text: string) => Promise<unknown>>(),
   handlers: new Map<string, (error: Error) => void>(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock('pg', () => ({
   default: {
     Pool: class {
       end = endMock;
+      query = queryMock;
 
       constructor(config: Record<string, unknown>) {
         poolConfigs.push(config);
@@ -53,6 +55,7 @@ describe('createPool', () => {
     poolConfigs.length = 0;
     handlers.clear();
     endMock.mockReset().mockResolvedValue();
+    queryMock.mockReset().mockResolvedValue({ rows: [{ '?column?': 1 }] });
   });
 
   afterEach(async () => {
@@ -93,6 +96,33 @@ describe('createPool', () => {
 
     expect(endMock).toHaveBeenCalledOnce();
     expect(pool()).not.toBe(first);
+  });
+});
+
+describe('ping', () => {
+  afterEach(async () => {
+    await closeDatabase();
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    resetEnvCache();
+  });
+
+  it('runs a trivial query against the shared pool', async () => {
+    withProcessEnv();
+    queryMock.mockResolvedValue({ rows: [] });
+
+    await expect(ping()).resolves.toBeUndefined();
+    expect(queryMock).toHaveBeenCalledWith('SELECT 1');
+  });
+
+  it('gives up when the query hangs past the deadline', async () => {
+    vi.useFakeTimers();
+    queryMock.mockReturnValue(new Promise(() => {}));
+
+    const outcome = expect(ping(createPool(env), 50)).rejects.toThrow('postgres');
+
+    await vi.advanceTimersByTimeAsync(50);
+    await outcome;
   });
 });
 

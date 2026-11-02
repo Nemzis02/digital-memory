@@ -1,13 +1,17 @@
 import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createHttpServer } from '../http/server.ts';
 import {
-  createWebhookServer,
   oneHeader,
   requestPath,
   secretHeaderMatches,
+  telegramWebhookRoute,
   telegramWebhookUrl,
   WEBHOOK_PATH,
 } from './webhook.ts';
+
+const createWebhookServer = (options: Parameters<typeof telegramWebhookRoute>[0]): Server =>
+  createHttpServer([telegramWebhookRoute(options)]);
 
 const SECRET = 'a'.repeat(32);
 

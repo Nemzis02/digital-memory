@@ -8,6 +8,8 @@ const TOKEN = '123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // gitleaks:allow
 
 const SECRET = 'b'.repeat(32);
 
+const checks = { postgres: () => Promise.resolve(), qdrant: () => Promise.resolve() };
+
 const ME: UserFromGetMe = {
   id: 1,
   is_bot: true,
@@ -48,11 +50,13 @@ describe('listen', () => {
     const bot = botWith(calls);
     const start = vi.spyOn(bot, 'start').mockResolvedValue(undefined);
 
-    const server = await serve(bot, { port: 0 });
+    const server = await serve(bot, { port: 0, checks });
 
     running.push(server);
 
     expect((await fetch(`http://127.0.0.1:${server.port}/`)).status).toBe(404);
+    expect((await fetch(`http://127.0.0.1:${server.port}/healthz`)).status).toBe(200);
+    expect((await fetch(`http://127.0.0.1:${server.port}/readyz`)).status).toBe(200);
     expect(calls.map((call) => call.method)).toEqual(['deleteWebhook']);
 
     expect(start).toHaveBeenCalledWith(
@@ -69,6 +73,7 @@ describe('listen', () => {
       port: 0,
       publicUrl: 'https://example.com/app',
       webhookSecret: SECRET,
+      checks,
     });
 
     running.push(server);
@@ -104,7 +109,7 @@ describe('listen', () => {
   it('refuses to listen on a webhook without the secret', async () => {
     const bot = new Bot(TOKEN, { botInfo: ME });
 
-    await expect(serve(bot, { port: 0, publicUrl: 'https://example.com' })).rejects.toThrow(
+    await expect(serve(bot, { port: 0, publicUrl: 'https://example.com', checks })).rejects.toThrow(
       'TELEGRAM_WEBHOOK_SECRET',
     );
   });

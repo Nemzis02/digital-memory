@@ -1,8 +1,9 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
+    exclude: [...configDefaults.exclude, 'src/**/*.int.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
@@ -10,6 +11,8 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.ts',
         'src/**/fixtures.ts',
+        'src/test/**',
+        'src/core/db/migrate-cli.ts',
         'src/core/eval/accept.ts',
         'src/core/vector/reindex-cli.ts',
       ],

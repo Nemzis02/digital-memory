@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { IncomingMessage, Server, ServerResponse } from 'node:http';
-import { createHttpServer, finish, type HttpRoute } from '../http/server.ts';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { finish, type HttpRoute } from '../http/server.ts';
 
 export { requestPath } from '../http/server.ts';
 
@@ -55,11 +55,4 @@ export function telegramWebhookRoute(options: {
       return options.handle(req, res);
     },
   };
-}
-
-export function createWebhookServer(options: {
-  secret: string;
-  handle: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
-}): Server {
-  return createHttpServer([telegramWebhookRoute(options)]);
 }
