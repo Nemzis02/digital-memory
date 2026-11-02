@@ -53,6 +53,10 @@ npm run dev
 `npm run dev` creates the Qdrant collection and the LangGraph checkpoint tables itself, both
 idempotently. `npm test` needs no services and no keys.
 
+`npm run reindex` adds the BM25 sparse vector to every stored point that lacks it and drops the
+retired hashed vector from the collection. It is idempotent and safe while the bot runs. Run it
+once per collection after a sparse vector change.
+
 `npm run test:live` is opt-in and spends real quota: it embeds, calls the models, and writes to R2
 and Qdrant, cleaning up after itself. Set `INGEST_PHOTO`, `INGEST_VOICE` or `INGEST_DOCUMENT` to a
 file path to include that medium; each case is skipped without one. Use files saved out of a real
@@ -74,12 +78,12 @@ When the new scores are the ones to keep, `npm run eval:accept` copies the run i
 `evals/baseline.json`. Commit it with the change that caused it. With the Langfuse keys set, each
 run also appears in Langfuse as a dataset run.
 
-Accepted baseline, 2026-10-27, `claude-sonnet-5-5` and `gemini-embedding-2`:
+Accepted baseline, 2026-10-29, `claude-sonnet-5-5` and `gemini-embedding-2`:
 
 | Suite              | Score | Cases |
 | ------------------ | ----- | ----- |
-| Retrieval recall@5 | 0.95  | 40    |
-| Turn tool choice   | 0.89  | 27    |
+| Retrieval recall@5 | 0.96  | 47    |
+| Turn tool choice   | 0.96  | 27    |
 
 `npm test` checks the golden set and the scorers without calling a model. `evals/README.md` has
 the row formats and the steps to add a case.

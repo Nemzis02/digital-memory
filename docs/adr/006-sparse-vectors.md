@@ -22,9 +22,10 @@ Three options were considered:
 
 ### Measurement
 
-`npm run eval:sparse` seeds the golden set into a temporary collection with all three sparse
-vectors, then scores recall@5 on the sparse branch alone and on the hybrid search (dense plus
-sparse, RRF, the same limits as `search()`). Seven keyword cases were added for this: five
+A comparison harness, `src/core/eval/sparse.live.test.ts` in commit `0495a1e`, seeded the golden
+set into a temporary collection with all three sparse vectors, then scored recall@5 on the
+sparse branch alone and on the hybrid search (dense plus sparse, RRF, the same limits as
+`search()`). The harness left with the hashed vector in spec 007 Task 4. Seven keyword cases were added for this: five
 plurals that the corpus holds only in the singular, and two forget requests with filler words.
 A synthetic one-word memory, `junk-note`, gives the filler words something to match.
 
@@ -50,6 +51,16 @@ Cases where the sparse branch differs:
 The hybrid score does not move: the dense branch already finds every plural. The two
 `no-answer-*` cases score 0 under hybrid search for every variant, because the dense branch
 always returns hits.
+
+`npm run eval` before and after the switch, hybrid search through `search()`:
+
+| Run                                      | Recall@5 | Cases |
+| ---------------------------------------- | -------- | ----- |
+| 2026-10-27, hashed vector                | 0.95     | 40    |
+| 2026-10-29, `bm25_v2` on the same corpus | 0.96     | 47    |
+
+No baselined case dropped. The seven keyword cases score 1.00. The accepted baseline is the
+2026-10-29 run.
 
 ## Decision
 

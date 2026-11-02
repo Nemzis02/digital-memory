@@ -4,7 +4,7 @@ import type { MemoryPayload } from '../memory/payload.ts';
 import { embeddableText } from '../pipeline/nodes/storage.ts';
 import { SPARSE_VECTOR, sparseDocument } from './qdrant.ts';
 import type { ReindexClient } from './reindex.ts';
-import { reindexSparse } from './reindex.ts';
+import { dropSparseVector, reindexSparse } from './reindex.ts';
 
 const COLLECTION = 'digital_memory';
 
@@ -30,9 +30,13 @@ interface UpdateRequest {
   points: Schemas['PointVectors'][];
 }
 
-function fakeClient(initial: StoredPoint[], { applyUpdates = true } = {}) {
+function fakeClient(
+  initial: StoredPoint[],
+  { applyUpdates = true, sparseVectors = [SPARSE_VECTOR] } = {},
+) {
   const points = new Map(initial.map((point) => [point.payload.id, point]));
   const updates: UpdateRequest[] = [];
+  const dropped: string[] = [];
 
   const client: ReindexClient = {
     // A real page comes back on a macrotask; a fake that resolves at once would let a runaway
@@ -67,9 +71,24 @@ function fakeClient(initial: StoredPoint[], { applyUpdates = true } = {}) {
 
       return Promise.resolve({ operation_id: 1, status: 'completed' as const });
     },
+    getCollection(collection) {
+      expect(collection).toBe(COLLECTION);
+
+      const sparse_vectors = Object.fromEntries(sparseVectors.map((name) => [name, {}]));
+
+      return Promise.resolve({
+        config: { params: { sparse_vectors } },
+      } as unknown as Schemas['CollectionInfo']);
+    },
+    deleteVectorName(collection, name) {
+      expect(collection).toBe(COLLECTION);
+      dropped.push(name);
+
+      return Promise.resolve({ operation_id: 2, status: 'completed' as const });
+    },
   };
 
-  return { client, points, updates };
+  return { client, points, updates, dropped };
 }
 
 const bare = (payload: MemoryPayload): StoredPoint => ({ payload, vectors: { dense: [0.1] } });
@@ -126,5 +145,21 @@ describe('reindexSparse', () => {
 
     await expect(reindexSparse(client, COLLECTION)).rejects.toThrow(/no progress/);
     expect(updates).toHaveLength(1);
+  });
+});
+
+describe('dropSparseVector', () => {
+  it('deletes the named vector when the collection has it', async () => {
+    const { client, dropped } = fakeClient([], { sparseVectors: ['bm25', SPARSE_VECTOR] });
+
+    await expect(dropSparseVector(client, COLLECTION, 'bm25')).resolves.toBe(true);
+    expect(dropped).toStrictEqual(['bm25']);
+  });
+
+  it('does nothing when the vector is already gone', async () => {
+    const { client, dropped } = fakeClient([]);
+
+    await expect(dropSparseVector(client, COLLECTION, 'bm25')).resolves.toBe(false);
+    expect(dropped).toHaveLength(0);
   });
 });

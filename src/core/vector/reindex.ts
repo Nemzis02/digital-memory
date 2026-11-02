@@ -8,7 +8,13 @@ const log = logger.child({ module: 'vector/reindex' });
 
 export const REINDEX_BATCH = 64;
 
-export type ReindexClient = Pick<QdrantClient, 'scroll' | 'updateVectors'>;
+// The hashed vector that bm25_v2 replaced.
+export const LEGACY_SPARSE_VECTOR = 'bm25';
+
+export type ReindexClient = Pick<
+  QdrantClient,
+  'scroll' | 'updateVectors' | 'getCollection' | 'deleteVectorName'
+>;
 
 export interface ReindexResult {
   updated: number;
@@ -58,4 +64,21 @@ export async function reindexSparse(
     updated += points.length;
     log.info('sparse vectors added', { collection, updated });
   }
+}
+
+export async function dropSparseVector(
+  client: ReindexClient,
+  collection: string,
+  name: string,
+): Promise<boolean> {
+  const { config } = await client.getCollection(collection);
+
+  if (!(name in (config.params.sparse_vectors ?? {}))) {
+    return false;
+  }
+
+  await client.deleteVectorName(collection, name, { wait: true });
+  log.info('sparse vector dropped', { collection, name });
+
+  return true;
 }

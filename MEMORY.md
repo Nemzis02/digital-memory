@@ -4,6 +4,12 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-10-29 — Qdrant `updateVectors` accepts a `Document` for a sparse vector
+
+Send `{ text, model: 'qdrant/bm25', options }` under the sparse vector name and the server
+builds the vector in place; the dense vector and the payload are not resent. The JS client
+types this as `Document`, the same shape `upsert` and `query` take.
+
 ## 2026-10-23 — Langfuse `mask` never sees the AI SDK span attributes
 
 `LangfuseSpanProcessor`'s `mask` covers only `langfuse.*` keys; prompts and tool data sit in
@@ -32,11 +38,6 @@ it reaches the model as `error-text` with the value `String(error)`, e.g. `Error
 An S3 `GetObject` body is an `IncomingMessage`, whose `url` is `''`, so grammY fetches it and
 fails with "Only absolute URLs are supported" before any request is sent. Wrap the body with
 `Readable.toWeb` first. Transformer-level bot tests never serialise `InputFile` and miss this.
-
-## 2026-10-12 — A new R2 account can fail TLS before any client option matters
-
-A new account can return TLS alert 40 with no certificate on the account host itself — the
-endpoint cert is not provisioned yet, and no client option fixes that.
 
 ## 2026-10-12 — A LangGraph node may not share a name with a state channel
 

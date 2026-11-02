@@ -1,11 +1,11 @@
 {
-  "ran_at": "2026-10-27T13:24:40.894Z",
+  "ran_at": "2026-10-29T14:41:49.194Z",
   "models": {
     "strong": "claude-sonnet-5-5",
     "embedding": "gemini-embedding-2"
   },
   "retrieval": {
-    "total": 0.95,
+    "total": 0.9574,
     "cases": {
       "dentist-keyword": 1,
       "dentist-paraphrase": 1,
@@ -46,11 +46,18 @@
       "q4-goals-keyword": 1,
       "japan-filter": 1,
       "no-answer-piano": 0,
-      "no-answer-sailing": 0
+      "no-answer-sailing": 0,
+      "dentists-keyword": 1,
+      "receipts-keyword": 1,
+      "plumbers-keyword": 1,
+      "recommendations-keyword": 1,
+      "inspections-keyword": 1,
+      "umbrella-filler-keyword": 1,
+      "wifi-filler-keyword": 1
     }
   },
   "turns": {
-    "total": 0.9259,
+    "total": 0.963,
     "cases": {
       "question-landlord": 1,
       "question-dentist": 0,
@@ -63,7 +70,7 @@
       "list-tag": 1,
       "list-month": 1,
       "list-receipts": 1,
-      "list-count": 0,
+      "list-count": 1,
       "save-prefix": 1,
       "save-remember": 1,
       "save-polite": 1,
