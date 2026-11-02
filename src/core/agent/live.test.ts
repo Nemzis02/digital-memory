@@ -152,11 +152,12 @@ describe.skipIf(!live)('live agent turn', () => {
       const locksmith = seed('locksmith');
       const reply = await turn('live-agent-q3', 'Forget the locksmith note.');
 
-      expect(reply).toStrictEqual({
-        text: `Forget ${locksmith.summary}?`,
+      expect(reply).toMatchObject({
         keyboard: 'forget',
-        parentId: locksmith.id,
+        candidates: [{ id: locksmith.id, summary: locksmith.summary }],
       });
+
+      expect(reply.text).toMatch(/^Forget this memory\?\n\d{4}-\d{2}-\d{2} · /);
 
       expect(await qdrantStore().fetch([locksmith.id])).toHaveLength(1);
     },

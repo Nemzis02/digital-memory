@@ -65,7 +65,7 @@ describe('toQueryInput', () => {
 });
 
 describe('input schemas', () => {
-  it('reject a category outside the archive, a loose date, a blank query, and a forget without an id', () => {
+  it('reject a category outside the archive, a loose date, a blank query, and a forget without ids', () => {
     expect(searchMemoryInput.safeParse({ query: 'x', categories: ['astrology'] }).success).toBe(
       false,
     );
@@ -73,8 +73,17 @@ describe('input schemas', () => {
     expect(listMemoriesInput.safeParse({ eventAfter: 'next tuesday' }).success).toBe(false);
     expect(searchMemoryInput.safeParse({ query: '   ' }).success).toBe(false);
     expect(saveMemoryInput.safeParse({ note: '  ' }).success).toBe(false);
-    expect(forgetMemoryInput.safeParse({ id: 'the dentist card' }).success).toBe(false);
-    expect(forgetMemoryInput.safeParse({ query: 'dentist' }).success).toBe(false);
+    const id = '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12';
+
+    expect(forgetMemoryInput.safeParse({ ids: ['the dentist card'] }).success).toBe(false);
+    expect(forgetMemoryInput.safeParse({ ids: [] }).success).toBe(false);
+    expect(forgetMemoryInput.safeParse({ id }).success).toBe(false);
+
+    expect(forgetMemoryInput.safeParse({ ids: Array.from({ length: 21 }, () => id) }).success).toBe(
+      false,
+    );
+
+    expect(forgetMemoryInput.safeParse({ ids: [id, id] }).success).toBe(true);
   });
 
   it('show the model a query it must give and dates as strings', () => {

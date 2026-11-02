@@ -15,6 +15,13 @@
       "when": 1791643526623,
       "tag": "0001_oval_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793628696824,
+      "tag": "0002_wise_luckman",
+      "breakpoints": true
     }
   ]
 }

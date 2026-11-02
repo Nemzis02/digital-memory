@@ -3,12 +3,13 @@ import { Api } from 'grammy';
 import { getEnv } from './config/env.ts';
 import { createConversationLog } from './core/conversation/store.ts';
 import { closeDatabase, ping } from './core/db/client.ts';
+import { createForgetRequests } from './core/forget/requests.ts';
 import { runTurn } from './core/agent/turn.ts';
 import { embeddings } from './core/llm/embeddings.ts';
 import { llmRouter } from './core/llm/router.ts';
 import { logger } from './core/logging/logger.ts';
 import { ingestionPipeline } from './core/pipeline/graph.ts';
-import { forget } from './core/retrieval/query.ts';
+import { forgetMany } from './core/retrieval/query.ts';
 import { r2Storage } from './core/storage/r2.ts';
 import { startTelemetry, stopTelemetry } from './core/telemetry/telemetry.ts';
 import { qdrantStore } from './core/vector/qdrant.ts';
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
     adminId: env.TELEGRAM_ADMIN_ID,
     pipeline,
     conversations: createConversationLog(),
+    forgetRequests: createForgetRequests(),
     turn: (message, context, options) =>
       runTurn(
         {
@@ -57,7 +59,7 @@ async function main(): Promise<void> {
         context,
         options,
       ),
-    forget: (parentId) => forget({ store, storage }, parentId),
+    forget: (parentIds) => forgetMany({ store, storage }, parentIds),
     storage,
   });
 

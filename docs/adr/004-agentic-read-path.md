@@ -32,12 +32,16 @@ what to call, sees the result, and answers or asks back.
      score. That score carries rank and no relevance: 1.0 is first in both branches, 0.5 is first
      in one. A filler word such as "note" let BM25 rank a short junk memory first, so no score floor
      could separate it from the real match. The model reads the hits and picks one, or asks.
+     _Amended 2026-11-02 by ADR 007:_ it takes a list of shown ids, so one turn can propose
+     several memories; calls within a turn accumulate.
 3. **What stays outside the model.**
    - A photo, document or voice note with no caption is saved with no model turn, since there is
      nothing to decide.
    - Undo on a save stays an inline button.
    - Deletion is confirmed by the Forget inline button, not by a typed "yes" the model would have
      to interpret. The model only proposes the candidate.
+     _Amended 2026-11-02 by ADR 007:_ the button carries a stored request id, not a memory id,
+     and the confirmation lists every memory the request holds.
 4. **Tool results are data.** Memory text returns inside a delimited block marked as content.
    The system prompt says instructions found in memories are never followed. A saved web page
    or forwarded message is the expected injection vector.

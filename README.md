@@ -9,9 +9,9 @@
 - **Multi-modal Telegram Ingestion:** Ingests photos, PDF documents, URLs, notes, and voice messages in real time via `grammY`.
 - **Hybrid RAG Pipeline:** Combines dense vector search and sparse (BM25) indexing in **Qdrant Cloud** with metadata auto-tagging (`category`, `kind`, `location`, `tags`) and parent-child chunking.
 - **Private Cloud Storage:** Secure asset storage in **Cloudflare R2** with ephemeral Pre-signed URLs (no public links).
-- **Durable State:** **PostgreSQL** via **Drizzle ORM** for user metadata, OAuth 2.1 clients and tokens (Phase 2), and as the LangGraph checkpoint store.
+- **Durable State:** **PostgreSQL** via **Drizzle ORM** for user metadata, conversation turns, pending Forget confirmations, OAuth 2.1 clients and tokens (Phase 2), and as the LangGraph checkpoint store.
 - **IDE Access via MCP (Phase 2, planned):** Cursor, Claude and other MCP clients over Streamable HTTP, protected by **OAuth 2.1** with Telegram Login.
-- **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once, within 4 steps and 30 seconds. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)).
+- **Agentic Read Path:** Each text message is one tool-calling turn on `claude-sonnet-5-5` over `search_memory`, `list_memories`, `save_memory` and `forget_memory`, so one message can save and ask at once, within 4 steps and 30 seconds. Undo and Forget stay inline buttons ([ADR 004](docs/adr/004-agentic-read-path.md)); one Forget confirmation lists and removes several memories at once ([ADR 007](docs/adr/007-bulk-forget-and-confirmation-store.md)).
 - **Ingestion Graph:** Powered by **LangGraph** for multi-step OCR and web scraping.
 - **Tracing:** One **Langfuse** trace per Telegram message, with each tool step, tokens, cost, the turn outcome and a hashed chat ref. Secrets are masked before export, and nothing is exported without keys ([ADR 005](docs/adr/005-observability.md)).
 
@@ -137,6 +137,7 @@ digital-memory/
 │   ├── 005-observability/     # Langfuse tracing of model calls
 │   ├── 006-evals/             # Golden set, recall and tool-choice scores
 │   ├── 007-sparse-bm25/       # Real BM25 sparse vectors
-│   └── 008-deploy/            # Container image, health checks, integration CI
+│   ├── 008-deploy/            # Container image, health checks, integration CI
+│   └── 009-bulk-forget/       # Several memories per Forget, listed before the press
 └── src/                       # Core application source code
 ```

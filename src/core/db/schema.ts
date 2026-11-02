@@ -73,6 +73,15 @@ export const conversationTurns = pgTable(
   ],
 );
 
+// No FK to conversations: the exchange is appended only after the confirmation is sent.
+export const forgetRequests = pgTable('forget_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  chatRef: text('chat_ref').notNull(),
+  memoryIds: uuid('memory_ids').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+});
+
 export const tokenType = pgEnum('token_type', ['access', 'refresh']);
 
 export const oauthTokens = pgTable(

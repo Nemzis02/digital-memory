@@ -3,6 +3,7 @@ import type { TurnOptions } from '../agent/turn.ts';
 import type { ConversationLog } from '../conversation/store.ts';
 import { contextWindow } from '../conversation/context.ts';
 import type { ConversationTurn } from '../conversation/context.ts';
+import type { ForgetRequests } from '../forget/requests.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemorySource } from '../memory/payload.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
@@ -10,7 +11,7 @@ import { NOTHING_FOUND } from '../retrieval/answer.ts';
 import { traceTurn } from '../telemetry/telemetry.ts';
 import type { InboundMessage } from './inbound.ts';
 import { turnBody } from './inbound.ts';
-import { present, savedReply, type RouteReply } from './reply.ts';
+import { present, savedReply, type RouteReply, type TurnReply } from './reply.ts';
 
 const log = logger.child({ module: 'ingestion/route' });
 
@@ -22,14 +23,16 @@ export type RunTurn = (
   message: InboundMessage,
   context: readonly ConversationTurn[],
   options?: TurnOptions,
-) => Promise<RouteReply>;
+) => Promise<TurnReply>;
 
 export interface RouteDeps {
   source: MemorySource;
   pipeline: IngestionPipeline;
   conversations: ConversationLog;
+  forgetRequests: ForgetRequests;
   turn: RunTurn;
-  forget(parentId: UUID): Promise<boolean>;
+  /** Removes each parent that still exists and returns how many it removed. */
+  forget(parentIds: readonly UUID[]): Promise<number>;
   now?: () => Date;
 }
 
@@ -39,8 +42,37 @@ export interface DispatchOptions {
   userTurn?: { body: string; sourceRef: string };
 }
 
-export function forgetResult(removed: boolean): RouteReply {
-  return present({ text: removed ? FORGOTTEN : NOTHING_FOUND, keyboard: 'none' });
+export function forgetResult(removed: number, total: number): RouteReply {
+  if (removed === 0) {
+    return present({ text: NOTHING_FOUND, keyboard: 'none' });
+  }
+
+  if (total === 1) {
+    return present({ text: FORGOTTEN, keyboard: 'none' });
+  }
+
+  if (removed === total) {
+    return present({ text: `Forgotten ${String(total)} memories.`, keyboard: 'none' });
+  }
+
+  return present({
+    text: `Forgotten ${String(removed)} of ${String(total)} memories. The others were already gone.`,
+    keyboard: 'none',
+  });
+}
+
+/** Stores the proposed ids so the button needs only a request id: callback data holds 64 bytes. */
+async function requested(
+  deps: RouteDeps,
+  message: InboundMessage,
+  reply: Extract<TurnReply, { keyboard: 'forget' }>,
+): Promise<RouteReply> {
+  const requestId = await deps.forgetRequests.create({
+    chatRef: message.chatRef,
+    memoryIds: reply.candidates.map((candidate) => candidate.id),
+  });
+
+  return { text: reply.text, keyboard: 'forget', requestId };
 }
 
 function captionless(message: InboundMessage): boolean {
@@ -78,7 +110,9 @@ async function respond(
     message.replyToSourceRef,
   );
 
-  return deps.turn(message, context, saving === undefined ? undefined : { saving });
+  const reply = await deps.turn(message, context, saving === undefined ? undefined : { saving });
+
+  return reply.keyboard === 'forget' ? requested(deps, message, reply) : reply;
 }
 
 export async function dispatch(

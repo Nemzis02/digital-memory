@@ -1,5 +1,6 @@
 import type { UUID } from 'node:crypto';
 import type { InboundMessage } from '../ingestion/inbound.ts';
+import type { ForgetCandidate } from '../ingestion/reply.ts';
 import type { Embeddings } from '../llm/embeddings.ts';
 import type { ToolSpec } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
@@ -23,7 +24,7 @@ import {
 const log = logger.child({ module: 'agent/tools' });
 
 const NOT_SHOWN =
-  'forget_memory needs the id of a memory shown in this turn. Call search_memory or list_memories first.';
+  'forget_memory needs ids of memories shown in this turn. Call search_memory or list_memories first.';
 
 export interface AgentToolDeps {
   store: VectorStore;
@@ -37,7 +38,8 @@ export interface TurnEffects {
   saved?: IngestResult;
   /** The save in flight; it outlives a timed-out turn, so the turn can still offer Undo. */
   pending?: Promise<IngestResult>;
-  forgetCandidate?: { id: UUID; summary: string };
+  /** Keyed by id, so repeated calls add to one set instead of replacing it. */
+  forgetCandidates?: Map<UUID, ForgetCandidate>;
 }
 
 export interface AgentTurn {
@@ -101,6 +103,15 @@ function found(memory: MemoryPayload): FoundMemory {
     has_file: attachable,
     ...(memory.type === 'url' && memory.source_url !== undefined ? { url: memory.source_url } : {}),
     text: fenceMemory(memory.id, memory.original_text),
+  };
+}
+
+function candidate(memory: MemoryPayload): ForgetCandidate {
+  return {
+    id: memory.id,
+    summary: memory.summary,
+    createdAt: day(memory.created_at),
+    ...(memory.file_name === undefined ? {} : { fileName: memory.file_name }),
   };
 }
 
@@ -179,22 +190,38 @@ export function createAgentTools(deps: AgentToolDeps, turn: AgentTurn): AgentToo
 
     forget_memory: {
       description:
-        'Mark the one memory the user wants deleted. Give the id of a memory that search_memory or list_memories returned in this turn. It deletes nothing. The user confirms with a button.',
+        'Mark the memories the user wants deleted: one, several or all of the matches. Give ids that search_memory or list_memories returned in this turn. It deletes nothing. The user confirms with one button.',
       input: forgetMemoryInput,
       execute(input) {
         // Not a search: a fused-rank top hit carries no relevance, so the model picks what it read.
-        const parent = [...turn.shown.values()].find((memory) => memory.id === input.id);
+        const shown = [...turn.shown.values()];
+        const parents: MemoryPayload[] = [];
+        const missing: string[] = [];
 
-        if (parent === undefined) {
-          return Promise.reject(new Error(NOT_SHOWN));
+        for (const id of input.ids) {
+          const parent = shown.find((memory) => memory.id === id);
+
+          if (parent === undefined) {
+            missing.push(id);
+          } else {
+            parents.push(parent);
+          }
         }
 
-        const candidate = { id: parent.id, summary: parent.summary };
+        if (missing.length > 0) {
+          return Promise.reject(new Error(`${NOT_SHOWN} Not shown: ${missing.join(', ')}.`));
+        }
 
-        turn.effects.forgetCandidate = candidate;
-        log.info('forget candidate', { id: parent.id });
+        const candidates = (turn.effects.forgetCandidates ??= new Map());
+        const marked = parents.map(candidate);
 
-        return Promise.resolve(candidate);
+        for (const item of marked) {
+          candidates.set(item.id, item);
+        }
+
+        log.info('forget candidates', { ids: [...candidates.keys()] });
+
+        return Promise.resolve(marked);
       },
     },
   };

@@ -1,6 +1,7 @@
 import { autoRetry } from '@grammyjs/auto-retry';
 import { Bot } from 'grammy';
 import type { ConversationLog } from '../core/conversation/store.ts';
+import type { ForgetRequests } from '../core/forget/requests.ts';
 import type { RouteDeps, RunTurn } from '../core/ingestion/route.ts';
 import { logger } from '../core/logging/logger.ts';
 import type { IngestionPipeline } from '../core/pipeline/graph.ts';
@@ -15,6 +16,7 @@ export interface BotDependencies {
   adminId: number;
   pipeline: IngestionPipeline;
   conversations: ConversationLog;
+  forgetRequests: ForgetRequests;
   turn: RunTurn;
   forget: RouteDeps['forget'];
   storage: ObjectStorage;
@@ -33,6 +35,7 @@ export function createBot(deps: BotDependencies): Bot {
     source: 'telegram',
     pipeline: deps.pipeline,
     conversations: deps.conversations,
+    forgetRequests: deps.forgetRequests,
     turn: deps.turn,
     forget: deps.forget,
     ...(deps.now === undefined ? {} : { now: deps.now }),

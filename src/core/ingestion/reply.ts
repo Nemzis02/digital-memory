@@ -10,19 +10,54 @@ export interface ReplyFile extends CitationFile {
   summary: string;
 }
 
+export interface ForgetCandidate {
+  id: UUID;
+  summary: string;
+  createdAt: string;
+  fileName?: string;
+}
+
+interface PlainReply {
+  text: string;
+  html?: string;
+  files?: ReplyFile[];
+  keyboard: 'undo' | 'none';
+}
+
+export type TurnReply =
+  | PlainReply
+  | { text: string; html?: string; keyboard: 'forget'; candidates: readonly ForgetCandidate[] };
+
 export type RouteReply =
-  | { text: string; html?: string; files?: ReplyFile[]; keyboard: 'undo' | 'none' }
-  | { text: string; html?: string; keyboard: 'forget'; parentId: UUID };
+  PlainReply | { text: string; html?: string; keyboard: 'forget'; requestId: UUID };
 
 function clip(text: string): string {
   return text.length <= TELEGRAM_TEXT_LIMIT ? text : text.slice(0, TELEGRAM_TEXT_LIMIT);
 }
 
 /** Clips the plain text to what sendMessage accepts; the HTML is split by the bot instead. */
-export function present(reply: RouteReply): RouteReply {
+export function present<T extends TurnReply | RouteReply>(reply: T): T {
   const text = clip(reply.text);
 
   return text === reply.text ? reply : { ...reply, text };
+}
+
+/** The confirmation lists each memory, so the user sees what goes before the press. */
+export function forgetPrompt(candidates: readonly ForgetCandidate[]): string {
+  const header =
+    candidates.length === 1
+      ? 'Forget this memory?'
+      : `Forget these ${String(candidates.length)} memories?`;
+
+  const lines = candidates.map((candidate) =>
+    [
+      candidate.createdAt,
+      candidate.summary,
+      ...(candidate.fileName === undefined ? [] : [candidate.fileName]),
+    ].join(' · '),
+  );
+
+  return [header, ...lines].join('\n');
 }
 
 export function savedReply(result: IngestResult): string {

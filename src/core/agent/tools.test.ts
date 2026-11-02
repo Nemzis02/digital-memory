@@ -195,18 +195,24 @@ describe('save_memory', () => {
 });
 
 describe('forget_memory', () => {
-  it('marks a memory shown this turn without searching or deleting', async () => {
+  const card = { id: dentist.id, summary: 'Appointment card', createdAt: '2026-10-02' };
+  const recipe = { id: page.id, summary: 'Paella recipe', createdAt: '2026-10-03' };
+
+  it('marks the shown memories, in the order given, without searching or deleting', async () => {
     const box = harness();
 
     box.shown.set(dentist.id, dentist);
+    box.shown.set(page.id, page);
 
-    await expect(box.tools.forget_memory.execute({ id: dentist.id })).resolves.toStrictEqual({
-      id: dentist.id,
-      summary: 'Appointment card',
-    });
+    await expect(
+      box.tools.forget_memory.execute({ ids: [page.id, dentist.id] }),
+    ).resolves.toStrictEqual([recipe, card]);
 
     expect(box.effects).toStrictEqual({
-      forgetCandidate: { id: dentist.id, summary: 'Appointment card' },
+      forgetCandidates: new Map([
+        [page.id, recipe],
+        [dentist.id, card],
+      ]),
     });
 
     expect(box.embeds).toStrictEqual([]);
@@ -214,13 +220,36 @@ describe('forget_memory', () => {
     expect(box.removed).toStrictEqual([]);
   });
 
-  it('rejects an id the model was not shown this turn', async () => {
+  it('names the file of a memory that has one', async () => {
+    const box = harness();
+    const scan = { ...dentist, file_name: 'card.jpg' };
+
+    box.shown.set(scan.id, scan);
+
+    await expect(box.tools.forget_memory.execute({ ids: [scan.id] })).resolves.toStrictEqual([
+      { ...card, fileName: 'card.jpg' },
+    ]);
+  });
+
+  it('adds to one set across calls, without duplicates', async () => {
+    const box = harness();
+
+    box.shown.set(dentist.id, dentist);
+    box.shown.set(tapas.id, tapas);
+
+    await box.tools.forget_memory.execute({ ids: [dentist.id] });
+    await box.tools.forget_memory.execute({ ids: [tapas.id, dentist.id] });
+
+    expect([...(box.effects.forgetCandidates?.keys() ?? [])]).toStrictEqual([dentist.id, tapas.id]);
+  });
+
+  it('rejects the whole call when one id was not shown this turn', async () => {
     const box = harness();
 
     box.shown.set(dentist.id, dentist);
 
-    await expect(box.tools.forget_memory.execute({ id: tapas.id })).rejects.toThrow(
-      'forget_memory needs the id of a memory shown in this turn.',
+    await expect(box.tools.forget_memory.execute({ ids: [dentist.id, tapas.id] })).rejects.toThrow(
+      `forget_memory needs ids of memories shown in this turn. Call search_memory or list_memories first. Not shown: ${tapas.id}.`,
     );
 
     expect(box.effects).toStrictEqual({});

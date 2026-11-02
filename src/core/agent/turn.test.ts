@@ -332,20 +332,25 @@ describe('runTurn', () => {
     });
   });
 
-  it('proposes the one memory to forget behind the Forget button and deletes nothing', async () => {
+  it('lists the memories to forget behind one Forget button and deletes nothing', async () => {
     const box = harness(
       [
-        { call: 'search_memory', input: { query: 'the dentist card' } },
-        { call: 'forget_memory', input: { id: dentist.id } },
-        { text: 'Shall I forget the appointment card?' },
+        { call: 'search_memory', input: { query: 'the dentist card and the paella page' } },
+        { call: 'forget_memory', input: { ids: [dentist.id, page.id] } },
+        { text: 'Shall I forget both?' },
       ],
-      { hits: [TAPAS_HIT, DENTIST_HIT] },
+      { hits: [TAPAS_HIT, DENTIST_HIT, PAGE_HIT] },
     );
 
-    await expect(box.turn({ ...MESSAGE, text: 'forget the dentist card' })).resolves.toStrictEqual({
-      text: 'Forget Appointment card?',
+    await expect(
+      box.turn({ ...MESSAGE, text: 'forget the dentist card and the paella page' }),
+    ).resolves.toStrictEqual({
+      text: 'Forget these 2 memories?\n2026-10-02 · Appointment card\n2026-10-03 · Paella recipe',
       keyboard: 'forget',
-      parentId: dentist.id,
+      candidates: [
+        { id: dentist.id, summary: 'Appointment card', createdAt: '2026-10-02' },
+        { id: page.id, summary: 'Paella recipe', createdAt: '2026-10-03' },
+      ],
     });
 
     expect(box.removed).toStrictEqual([]);
@@ -357,16 +362,16 @@ describe('runTurn', () => {
       [
         { call: 'save_memory', input: { note: 'the tapas bar on Calle Ruzafa is great' } },
         { call: 'search_memory', input: { query: 'the dentist card' } },
-        { call: 'forget_memory', input: { id: dentist.id } },
+        { call: 'forget_memory', input: { ids: [dentist.id] } },
         { text: 'Saved, and shall I forget the card?' },
       ],
       { hits: [DENTIST_HIT] },
     );
 
     await expect(box.turn()).resolves.toStrictEqual({
-      text: 'Forget Appointment card?',
+      text: 'Forget this memory?\n2026-10-02 · Appointment card',
       keyboard: 'forget',
-      parentId: dentist.id,
+      candidates: [{ id: dentist.id, summary: 'Appointment card', createdAt: '2026-10-02' }],
     });
 
     expect(box.ingested).toHaveLength(1);
@@ -389,7 +394,7 @@ describe('runTurn', () => {
 
   it('offers no Forget button for an id the model was not shown', async () => {
     const box = harness([
-      { call: 'forget_memory', input: { id: dentist.id } },
+      { call: 'forget_memory', input: { ids: [dentist.id] } },
       { text: 'I could not find it.' },
     ]);
 

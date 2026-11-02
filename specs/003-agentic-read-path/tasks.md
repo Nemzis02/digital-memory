@@ -21,3 +21,5 @@ Blocked on nothing. ADR 004 is the decision; this spec is the plan.
       features and mark ADR 002 decisions 3 and 4 superseded by ADR 004.
 - [x] Task 8: `forget_memory` takes the id of a memory shown this turn. Delete `resolveForget()`.
       The Task 7 live run showed that a fused-rank top hit can be a junk memory.
+
+_2026-11-02:_ spec 009 extends `forget_memory` to several memories and stores the pending ids.

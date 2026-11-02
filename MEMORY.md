@@ -4,6 +4,11 @@ Non-obvious constraints and library quirks. Newest first.
 
 ---
 
+## 2026-11-02 — Inline-button callback data holds 64 bytes
+
+Two uuids do not fit, so a button never carries memory ids. State behind a button goes in
+Postgres (`forget_requests`) and the button carries the row id (ADR 007).
+
 ## 2026-10-29 — Qdrant `updateVectors` accepts a `Document` for a sparse vector
 
 Send `{ text, model: 'qdrant/bm25', options }` under the sparse vector name and the server
@@ -67,11 +72,6 @@ Node's type stripping does not remap `./env.js` to `./env.ts`, so the traditiona
 specifier dies at runtime with `ERR_MODULE_NOT_FOUND` while `tsc --noEmit` stays green — CI
 will not catch it. `allowImportingTsExtensions` + `rewriteRelativeImportExtensions` let source
 say `./env.ts` and still emit `./env.js`.
-
-### gitleaks flags Telegram tokens with exactly 34 characters after `:A`
-
-Use the inline `// gitleaks:allow` directive, not a path allowlist for `*.test.ts`, which
-would blind the scanner to a real secret pasted into a test later.
 
 ### `file-type` returns MIME types carrying parameters
 

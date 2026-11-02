@@ -3,10 +3,11 @@ import type { InboundMessage } from '../ingestion/inbound.ts';
 import { turnBody } from '../ingestion/inbound.ts';
 import {
   escapeHtml,
+  forgetPrompt,
   formatAnswer,
   present,
   savedReply,
-  type RouteReply,
+  type TurnReply,
 } from '../ingestion/reply.ts';
 import type { ChatModel, ChatTurn, ToolCall, ToolSpecs } from '../llm/router.ts';
 import { StepLimitError } from '../llm/router.ts';
@@ -57,16 +58,14 @@ function answered(turn: AgentTurn, text: string) {
   return formatAnswer({ answer, citations: cite(sourced.parents) });
 }
 
-function compose(turn: AgentTurn, text: string, calls: readonly ToolCall[]): RouteReply {
-  const { saved, forgetCandidate } = turn.effects;
+function compose(turn: AgentTurn, text: string, calls: readonly ToolCall[]): TurnReply {
+  const { saved, forgetCandidates } = turn.effects;
 
   // One keyboard per reply: a save in the same turn loses its Undo to the Forget button.
-  if (forgetCandidate !== undefined) {
-    return {
-      text: `Forget ${forgetCandidate.summary}?`,
-      keyboard: 'forget',
-      parentId: forgetCandidate.id,
-    };
+  if (forgetCandidates !== undefined) {
+    const candidates = [...forgetCandidates.values()];
+
+    return { text: forgetPrompt(candidates), keyboard: 'forget', candidates };
   }
 
   if (saved === undefined) {
@@ -91,14 +90,14 @@ function compose(turn: AgentTurn, text: string, calls: readonly ToolCall[]): Rou
 }
 
 function outcomeOf(effects: TurnEffects): TurnOutcome {
-  if (effects.forgetCandidate !== undefined) {
+  if (effects.forgetCandidates !== undefined) {
     return 'forget';
   }
 
   return effects.saved === undefined ? 'answer' : 'saved';
 }
 
-async function timedOut(turn: AgentTurn): Promise<RouteReply> {
+async function timedOut(turn: AgentTurn): Promise<TurnReply> {
   // Ingestion is not cancelled, so a save still in flight will land; wait for it to offer Undo.
   const saved = await turn.effects.pending?.catch((error: unknown) => {
     log.warn('save failed after the turn timed out', { error });
@@ -123,7 +122,7 @@ export async function runTurn(
   message: InboundMessage,
   context: readonly ConversationTurn[],
   options?: TurnOptions,
-): Promise<RouteReply> {
+): Promise<TurnReply> {
   const saving = options?.saving ?? true;
   const now = deps.now ?? (() => new Date());
   const turn: AgentTurn = { message, effects: {}, shown: new Map() };
@@ -154,7 +153,7 @@ export async function runTurn(
       log.info('turn', {
         calls: calls.map((call) => call.name),
         saved: turn.effects.saved?.id,
-        forget: turn.effects.forgetCandidate?.id,
+        forget: [...(turn.effects.forgetCandidates?.keys() ?? [])],
       });
 
       setOutcome(outcomeOf(turn.effects));

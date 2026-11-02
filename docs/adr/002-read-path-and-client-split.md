@@ -37,6 +37,8 @@ Phase 2, and the only question was whether to pretend otherwise until then.
    save stays.
    _Superseded 2026-10-21 by ADR 004:_ no classification exists to recover from. Undo on a save
    and the Forget confirmation stay inline buttons (ADR 004 decision 3).
+   _Amended 2026-11-02:_ the Forget button confirms a stored request of one or several
+   memories (ADR 007).
 5. **A chat is a conversation, stored in Postgres.** Each Telegram chat (and each MCP thread)
    is one `conversations` row; every user message and bot reply is a `conversation_turns` row.
    A new message sees the recent turns of that chat with no reply gesture required. The window

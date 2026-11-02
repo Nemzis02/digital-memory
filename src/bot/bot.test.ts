@@ -5,6 +5,7 @@ import type { Update, UserFromGetMe } from 'grammy/types';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { AppendExchange, ConversationLog } from '../core/conversation/store.ts';
 import type { ConversationTurn } from '../core/conversation/context.ts';
+import type { ForgetRequestInput } from '../core/forget/requests.ts';
 import { formatAnswer, present, savedReply } from '../core/ingestion/reply.ts';
 import type { RunTurn } from '../core/ingestion/route.ts';
 import { memoryId } from '../core/memory/id.ts';
@@ -124,6 +125,10 @@ function recordingPipeline(): {
 
 const PARENT = '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12';
 
+const SECOND: UUID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+const REQUEST: UUID = '7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f';
+
 const NOT_KEPT = 'Ничего сохранённого нет.';
 
 function rejectingStorage(): ObjectStorage {
@@ -186,13 +191,16 @@ function streamingStorage(
 
 function harness(extras?: {
   turn?: RunTurn;
-  removed?: boolean;
+  removed?: number;
   storage?: ObjectStorage;
   failHtml?: boolean;
+  failMarkupEdit?: boolean;
 }) {
   const sent: Sent[] = [];
   const turns: { text: string; saving?: boolean }[] = [];
   const forgotten: UUID[] = [];
+  const requests = new Map<string, { chatRef: string; memoryIds: UUID[] }>();
+  const created: ForgetRequestInput[] = [];
   let messageId = 50;
 
   const pipeline = recordingPipeline();
@@ -224,10 +232,29 @@ function harness(extras?: {
 
       return turn(message, context, options);
     },
-    forget(parentId) {
-      forgotten.push(parentId);
+    forgetRequests: {
+      create(input) {
+        created.push(input);
+        requests.set(REQUEST, { chatRef: input.chatRef, memoryIds: [...input.memoryIds] });
 
-      return Promise.resolve(extras?.removed ?? true);
+        return Promise.resolve(REQUEST);
+      },
+      take(id, chatRef) {
+        const request = requests.get(id);
+
+        if (request === undefined || request.chatRef !== chatRef) {
+          return Promise.resolve(undefined);
+        }
+
+        requests.delete(id);
+
+        return Promise.resolve(request.memoryIds);
+      },
+    },
+    forget(parentIds) {
+      forgotten.push(...parentIds);
+
+      return Promise.resolve(extras?.removed ?? parentIds.length);
     },
     storage: extras?.storage ?? rejectingStorage(),
   });
@@ -236,6 +263,10 @@ function harness(extras?: {
 
   bot.api.config.use((_prev, method, payload) => {
     sent.push({ method: String(method), payload: payload as Sent['payload'] });
+
+    if (extras?.failMarkupEdit === true && method === 'editMessageReplyMarkup') {
+      return Promise.reject(new Error('message is too old to edit'));
+    }
 
     if (extras?.failHtml === true && 'parse_mode' in payload && payload.parse_mode === 'HTML') {
       return Promise.reject(new Error('cannot parse'));
@@ -269,7 +300,7 @@ function harness(extras?: {
     return Promise.resolve({ ok: true as const, result: true as const } as never);
   });
 
-  return { bot, sent, ...pipeline, conversations, forgotten, turns };
+  return { bot, sent, ...pipeline, conversations, forgotten, turns, requests, created };
 }
 
 function person(id: number) {
@@ -747,86 +778,161 @@ describe('createBot', () => {
     expect(undone).toEqual([]);
   });
 
-  it('forgets the confirmed parent and does not ingest it', async () => {
-    const { bot, sent, ingested, forgotten, conversations } = harness();
+  const PROPOSAL =
+    'Forget these 2 memories?\n2026-10-02 · Appointment card\n2026-10-03 · Paella recipe';
 
-    await bot.handleUpdate(
-      update({
-        callback_query: {
-          id: 'cb-forget',
-          from: person(ADMIN),
-          chat_instance: 'ci',
-          data: `forget:${PARENT}`,
-          message: {
-            message_id: 51,
-            date: 1_700_000_001,
-            chat: { id: 7, type: 'private' },
-            text: 'Forget Appointment card?',
-          },
+  function forgetPress(data: string, chatId = 7): Update {
+    return update({
+      callback_query: {
+        id: 'cb-forget',
+        from: person(ADMIN),
+        chat_instance: 'ci',
+        data,
+        message: {
+          message_id: 51,
+          date: 1_700_000_001,
+          chat: { id: chatId, type: 'private' },
+          text: PROPOSAL,
         },
-      }),
+      },
+    });
+  }
+
+  it('renders a forget proposal as one button that carries the request id', async () => {
+    const proposing: RunTurn = () =>
+      Promise.resolve({
+        text: PROPOSAL,
+        keyboard: 'forget',
+        candidates: [
+          { id: PARENT, summary: 'Appointment card', createdAt: '2026-10-02' },
+          { id: SECOND, summary: 'Paella recipe', createdAt: '2026-10-03' },
+        ],
+      });
+
+    const { bot, sent, created, forgotten } = harness({ turn: proposing });
+
+    await bot.handleUpdate(askUpdate('forget the dentist card and the paella page'));
+
+    expect(created).toEqual([{ chatRef: '7', memoryIds: [PARENT, SECOND] }]);
+    expect(forgotten).toEqual([]);
+
+    const reply = sent.find((call) => call.method === 'sendMessage');
+
+    expect(reply?.payload.text).toBe(PROPOSAL);
+
+    expect(reply?.payload.reply_markup).toEqual({
+      inline_keyboard: [[{ text: 'Forget', callback_data: `forget:${REQUEST}` }]],
+    });
+  });
+
+  it('still reports the delete when the button cannot be removed', async () => {
+    const { bot, sent, forgotten, requests } = harness({ failMarkupEdit: true });
+
+    requests.set(REQUEST, { chatRef: '7', memoryIds: [PARENT, SECOND] });
+
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`));
+
+    expect(forgotten).toEqual([PARENT, SECOND]);
+    expect(requests.size).toBe(0);
+
+    expect(sent.filter((call) => call.method === 'sendMessage')[0]?.payload.text).toBe(
+      'Forgotten 2 memories.',
     );
+  });
 
-    expect(forgotten).toEqual([PARENT]);
+  it('forgets every memory of the confirmed request and removes the button', async () => {
+    const { bot, sent, ingested, forgotten, conversations, requests } = harness();
+
+    requests.set(REQUEST, { chatRef: '7', memoryIds: [PARENT, SECOND] });
+
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`));
+
+    expect(forgotten).toEqual([PARENT, SECOND]);
     expect(ingested).toEqual([]);
+    expect(requests.size).toBe(0);
 
-    const replies = sent.filter((call) => call.method === 'sendMessage');
+    expect(sent.map((call) => call.method)).toEqual([
+      'answerCallbackQuery',
+      'editMessageReplyMarkup',
+      'sendMessage',
+    ]);
 
-    expect(replies).toHaveLength(1);
-    expect(replies[0]?.payload.text).toBe('Forgotten.');
-    expect(replies[0]?.payload.reply_markup).toBeUndefined();
-    expect(replies[0]?.payload.reply_parameters).toEqual({ message_id: 51 });
+    const reply = sent[2];
+
+    expect(reply?.payload.text).toBe('Forgotten 2 memories.');
+    expect(reply?.payload.reply_markup).toBeUndefined();
+    expect(reply?.payload.reply_parameters).toEqual({ message_id: 51 });
     expect(conversations.exchanges.map((exchange) => exchange.user.body)).toEqual(['forget']);
   });
 
-  it('does not delete when the forget callback is not a parent id', async () => {
+  it('says Forgotten for a request of one memory', async () => {
+    const { bot, sent, forgotten, requests } = harness();
+
+    requests.set(REQUEST, { chatRef: '7', memoryIds: [PARENT] });
+
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`));
+
+    expect(forgotten).toEqual([PARENT]);
+
+    expect(sent.filter((call) => call.method === 'sendMessage')[0]?.payload.text).toBe(
+      'Forgotten.',
+    );
+  });
+
+  it('deletes nothing when the request is unknown or already used', async () => {
     const { bot, sent, forgotten } = harness();
 
-    await bot.handleUpdate(
-      update({
-        callback_query: {
-          id: 'cb-forget',
-          from: person(ADMIN),
-          chat_instance: 'ci',
-          data: 'forget:not-a-uuid',
-          message: {
-            message_id: 51,
-            date: 1_700_000_001,
-            chat: { id: 7, type: 'private' },
-            text: 'Forget Appointment card?',
-          },
-        },
-      }),
-    );
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`));
+
+    expect(forgotten).toEqual([]);
+    expect(sent.map((call) => call.method)).toEqual(['answerCallbackQuery']);
+    expect(sent[0]?.payload).toMatchObject({ text: 'This confirmation was already used.' });
+  });
+
+  it('deletes nothing when the request belongs to another chat', async () => {
+    const { bot, sent, forgotten, requests } = harness();
+
+    requests.set(REQUEST, { chatRef: '7', memoryIds: [PARENT] });
+
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`, 8));
+
+    expect(forgotten).toEqual([]);
+    expect(requests.size).toBe(1);
+    expect(sent.map((call) => call.method)).toEqual(['answerCallbackQuery']);
+  });
+
+  it('does not delete when the forget callback is not a request id', async () => {
+    const { bot, sent, forgotten } = harness();
+
+    await bot.handleUpdate(forgetPress('forget:not-a-uuid'));
 
     expect(forgotten).toEqual([]);
     expect(sent.map((call) => call.method)).toEqual(['answerCallbackQuery']);
   });
 
-  it('says nothing found when the confirmed parent is already gone', async () => {
-    const { bot, sent, forgotten } = harness({ removed: false });
+  it('says nothing found when every memory of the request is already gone', async () => {
+    const { bot, sent, forgotten, requests } = harness({ removed: 0 });
 
-    await bot.handleUpdate(
-      update({
-        callback_query: {
-          id: 'cb-forget',
-          from: person(ADMIN),
-          chat_instance: 'ci',
-          data: `forget:${PARENT}`,
-          message: {
-            message_id: 51,
-            date: 1_700_000_001,
-            chat: { id: 7, type: 'private' },
-            text: 'Forget Appointment card?',
-          },
-        },
-      }),
-    );
+    requests.set(REQUEST, { chatRef: '7', memoryIds: [PARENT, SECOND] });
 
-    expect(forgotten).toEqual([PARENT]);
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`));
+
+    expect(forgotten).toEqual([PARENT, SECOND]);
 
     expect(sent.filter((call) => call.method === 'sendMessage')[0]?.payload.text).toBe(
       NOTHING_FOUND,
+    );
+  });
+
+  it('counts a partial delete', async () => {
+    const { bot, sent, requests } = harness({ removed: 1 });
+
+    requests.set(REQUEST, { chatRef: '7', memoryIds: [PARENT, SECOND] });
+
+    await bot.handleUpdate(forgetPress(`forget:${REQUEST}`));
+
+    expect(sent.filter((call) => call.method === 'sendMessage')[0]?.payload.text).toBe(
+      'Forgotten 1 of 2 memories. The others were already gone.',
     );
   });
 });

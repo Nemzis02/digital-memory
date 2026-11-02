@@ -67,10 +67,16 @@ export const listMemoriesInput = memoryFilterSchema.extend({
     .describe('asc for what comes next, desc for the latest.'),
 });
 
+export const MAX_FORGET_IDS = 20;
+
 export const forgetMemoryInput = z.object({
-  id: z
-    .uuid()
-    .describe('The id of one memory that search_memory or list_memories returned in this turn.'),
+  ids: z
+    .array(z.uuid())
+    .min(1)
+    .max(MAX_FORGET_IDS)
+    .describe(
+      'The ids of the memories to delete. Each id must be one that search_memory or list_memories returned in this turn.',
+    ),
 });
 
 export const saveMemoryInput = z.object({

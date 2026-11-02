@@ -222,3 +222,16 @@ export async function forget(deps: ForgetDeps, parentId: UUID): Promise<boolean>
 
   return true;
 }
+
+/** Forgets each parent in turn and returns how many were still there to remove. */
+export async function forgetMany(deps: ForgetDeps, parentIds: readonly UUID[]): Promise<number> {
+  let removed = 0;
+
+  for (const parentId of parentIds) {
+    if (await forget(deps, parentId)) {
+      removed += 1;
+    }
+  }
+
+  return removed;
+}

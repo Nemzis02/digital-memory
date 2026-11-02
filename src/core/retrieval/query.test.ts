@@ -7,6 +7,7 @@ import { NOTHING_FOUND } from './answer.ts';
 import {
   cite,
   forget,
+  forgetMany,
   readableSources,
   recall,
   search,
@@ -499,5 +500,25 @@ describe('forget', () => {
 
     expect(box.removed).toStrictEqual([[paella.id, rice.id]]);
     expect(box.objectRemovals).toStrictEqual([]);
+  });
+});
+
+describe('forgetMany', () => {
+  it('removes each parent that still exists and counts only those', async () => {
+    const box = forgetting({ fetched: [dentist, paella] });
+
+    await expect(forgetMany(box.deps, [dentist.id, tuesday.id, paella.id])).resolves.toBe(2);
+
+    expect(box.fetches).toStrictEqual([[dentist.id], [tuesday.id], [paella.id]]);
+    expect(box.removed).toStrictEqual([[dentist.id], [paella.id]]);
+    expect(box.objectRemovals).toStrictEqual(['photos/2026/03/dentist.jpg']);
+  });
+
+  it('removes nothing for an empty list', async () => {
+    const box = forgetting({ fetched: [dentist] });
+
+    await expect(forgetMany(box.deps, [])).resolves.toBe(0);
+
+    expect(box.removed).toStrictEqual([]);
   });
 });

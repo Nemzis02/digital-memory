@@ -17,7 +17,8 @@ schema.
   Undo button under the confirmation.
 - As a user, I write one message that both saves and asks, and both happen.
 - As a user, I ask the bot to forget something, it shows me the one memory it found, and
-  nothing is deleted until I press Forget.
+  nothing is deleted until I press Forget. _Amended 2026-11-02:_ it lists every memory I
+  mean, one or several, behind one button (spec 009).
 - As a user, I send a photo, document or voice note without a caption, and it is saved at once
   with no model deciding anything.
 - As a user, I send a follow-up and the bot reads it in the context of the conversation, as

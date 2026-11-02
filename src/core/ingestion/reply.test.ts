@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAnswer, present, savedReply } from './reply.ts';
+import { forgetPrompt, formatAnswer, present, savedReply } from './reply.ts';
 
 const PARENT = '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12';
 const OTHER = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
@@ -74,6 +74,36 @@ describe('present', () => {
     const reply = { text: 'short', keyboard: 'none' } as const;
 
     expect(present(reply)).toBe(reply);
+  });
+});
+
+describe('forgetPrompt', () => {
+  const card = {
+    id: '6b1e8a2c-9d4f-4c7a-8e1b-3a5d7c9e0f12' as const,
+    summary: 'Appointment card',
+    createdAt: '2026-10-02',
+  };
+
+  it('lists one memory with its date, summary and file name', () => {
+    expect(forgetPrompt([{ ...card, fileName: 'card.jpg' }])).toBe(
+      'Forget this memory?\n2026-10-02 · Appointment card · card.jpg',
+    );
+  });
+
+  it('counts several memories and leaves out the file part when there is no file', () => {
+    expect(
+      forgetPrompt([
+        card,
+        {
+          id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+          summary: 'Programa oficial de les Falles 2023',
+          createdAt: '2026-10-23',
+          fileName: 'las fallas.pdf',
+        },
+      ]),
+    ).toBe(
+      'Forget these 2 memories?\n2026-10-02 · Appointment card\n2026-10-23 · Programa oficial de les Falles 2023 · las fallas.pdf',
+    );
   });
 });
 

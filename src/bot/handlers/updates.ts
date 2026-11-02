@@ -24,6 +24,8 @@ const FORGET_PREFIX = 'forget:';
 
 const FORGET_FAILED = 'Could not forget that.';
 
+const FORGET_USED = 'This confirmation was already used.';
+
 function displayName(from: User): string {
   return [from.first_name, from.last_name]
     .filter((part) => part !== undefined && part !== '')
@@ -102,7 +104,7 @@ export function replyMarkup(reply: RouteReply): InlineKeyboard | undefined {
     case 'undo':
       return new InlineKeyboard().text('Undo', UNDO);
     case 'forget':
-      return new InlineKeyboard().text('Forget', `${FORGET_PREFIX}${reply.parentId}`);
+      return new InlineKeyboard().text('Forget', `${FORGET_PREFIX}${reply.requestId}`);
   }
 }
 
@@ -241,7 +243,7 @@ function callbackMessage(callback: CallbackQuery): Message | undefined {
   return message;
 }
 
-function forgetId(data: string): UUID | undefined {
+function forgetRequestId(data: string): UUID | undefined {
   if (!data.startsWith(FORGET_PREFIX)) {
     return undefined;
   }
@@ -258,14 +260,31 @@ async function confirmForget(
   ctx: Context,
   deps: RouteDeps,
   callback: CallbackQuery,
-  parentId: UUID,
+  requestId: UUID,
 ): Promise<void> {
-  let removed: boolean;
+  // An inaccessible message still names its chat; only an inline-mode callback has none.
+  const chat = callback.message?.chat;
+
+  if (chat === undefined) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+
+  let removed: number;
+  let total: number;
 
   try {
-    removed = await deps.forget(parentId);
+    const ids = await deps.forgetRequests.take(requestId, String(chat.id));
+
+    if (ids === undefined) {
+      await ctx.answerCallbackQuery({ text: FORGET_USED });
+      return;
+    }
+
+    total = ids.length;
+    removed = await deps.forget(ids);
   } catch (error) {
-    log.error('failed to forget', { error, id: parentId });
+    log.error('failed to forget', { error, requestId });
 
     await ctx.answerCallbackQuery();
 
@@ -280,7 +299,7 @@ async function confirmForget(
     return;
   }
 
-  const reply = forgetResult(removed);
+  const reply = forgetResult(removed, total);
   const message = callbackMessage(callback);
 
   if (message === undefined) {
@@ -289,6 +308,11 @@ async function confirmForget(
   }
 
   await ctx.answerCallbackQuery();
+
+  // Best effort: Telegram refuses edits on messages older than 48 hours.
+  await ctx.editMessageReplyMarkup().catch((error: unknown) => {
+    log.warn('could not remove the Forget button', { error, requestId });
+  });
 
   const sent = await ctx.reply(reply.text, {
     reply_parameters: { message_id: message.message_id },
@@ -328,14 +352,14 @@ export async function handleCallback(
   }
 
   if (data.startsWith(FORGET_PREFIX)) {
-    const parentId = forgetId(data);
+    const requestId = forgetRequestId(data);
 
-    if (parentId === undefined) {
+    if (requestId === undefined) {
       await ctx.answerCallbackQuery();
       return;
     }
 
-    await confirmForget(ctx, deps, callback, parentId);
+    await confirmForget(ctx, deps, callback, requestId);
     return;
   }
 

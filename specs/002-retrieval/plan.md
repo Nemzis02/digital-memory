@@ -51,6 +51,9 @@ Deletes the parent **and** its children: `list({ filter: { parentId } })` then `
 both sets. Deleting only the parent leaves chunks that still match searches and can no longer
 be reached or removed. Destructive, so the bot confirms before calling it.
 
+_Amended 2026-11-02:_ `forgetMany()` runs it per id over a confirmed list and returns the count
+removed; the bot confirms the whole list at once (spec 009).
+
 ## 4. Client Split (ADR 002)
 
 - **Telegram** calls `ask()` and `recall()`; it has no model.

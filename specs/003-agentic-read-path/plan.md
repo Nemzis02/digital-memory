@@ -44,6 +44,9 @@ that turn: then `runTurn()` returns the saved confirmation with Undo, since the 
 | `save_memory`   | optional `note`                                      | `pipeline.ingest()`         | `id`, `summary`, `category`, `kind`, `tags`                                        |
 | `forget_memory` | `id` of a memory shown this turn                     | nothing                     | the candidate `id` and `summary`, or an error for an id not shown                  |
 
+_Amended 2026-11-02:_ `forget_memory` takes `ids`, a list of memories shown this turn, and
+returns the candidates it marked (spec 009).
+
 `save_memory`'s `note`, when given, replaces the message text before ingestion, so a message
 that both saves and asks stores only the part worth keeping. The file and ids stay the same.
 
@@ -63,6 +66,8 @@ saved result, `forget_memory` sets its forget candidate. Reply composition reads
 - A forget candidate was found → `keyboard: 'forget'` with the parent id. The model's text is
   replaced by `Forget <summary>?`, so the confirmation never depends on model wording.
   A save in the same turn loses its Undo: a reply carries one keyboard.
+  _Amended 2026-11-02:_ the turn returns the candidates and a listed confirmation; routing
+  stores them as a `forget_requests` row and the button carries that row's id (spec 009).
 - A save happened and every tool call was `save_memory` → today's `savedReply()` with Undo. The
   model's text is dropped.
 - A save happened alongside other calls → `savedReply()`, a blank line, then the answer as below,
