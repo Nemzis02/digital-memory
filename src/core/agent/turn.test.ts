@@ -613,6 +613,31 @@ describe('runTurn', () => {
     await expect(reply).resolves.toStrictEqual({ text: TIMEOUT_REPLY, keyboard: 'none' });
   });
 
+  it('reports thinking around a search, so the user sees each stage', async () => {
+    const box = harness(
+      [{ call: 'search_memory', input: { query: 'dentist' } }, { text: 'Tuesday at 10.' }],
+      { hits: [DENTIST_HIT] },
+    );
+
+    const stages: string[] = [];
+
+    await box.turn(MESSAGE, [], { progress: (stage) => stages.push(stage) });
+
+    expect(stages).toStrictEqual(['thinking', 'searching', 'thinking']);
+  });
+
+  it('hands the save its progress and thinks again once it lands', async () => {
+    const box = harness([{ call: 'save_memory', input: {} }, { text: 'Filed.' }]);
+    const stages: string[] = [];
+    const progress = (stage: string) => stages.push(stage);
+    const ingest = vi.spyOn(box.pipeline, 'ingest');
+
+    await box.turn(MESSAGE, [], { progress });
+
+    expect(ingest.mock.calls[0]?.[1]).toStrictEqual({ progress });
+    expect(stages).toStrictEqual(['thinking', 'thinking']);
+  });
+
   it('hands the model a budget signal and leaves no timer behind', async () => {
     vi.useFakeTimers();
 

@@ -287,6 +287,20 @@ describe('dispatch', () => {
     expect(box.turns).toStrictEqual([]);
   });
 
+  it('hands the progress to the turn, and to the save of a captionless file', async () => {
+    const box = await harness();
+    const progress = () => undefined;
+    const ingest = vi.spyOn(box.deps.pipeline, 'ingest');
+
+    await dispatch(box.deps, message('hi'), box.send, { progress });
+
+    expect(box.turns[0]?.options).toStrictEqual({ progress });
+
+    await dispatch(box.deps, photo(), box.send, { progress });
+
+    expect(ingest.mock.calls[0]?.[1]).toStrictEqual({ progress });
+  });
+
   it('still returns the reply when the exchange cannot be recorded', async () => {
     const box = await harness();
 

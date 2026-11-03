@@ -12,6 +12,7 @@ import {
 import type { ChatModel, ChatTurn, ToolCall, ToolSpecs } from '../llm/router.ts';
 import { StepLimitError } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
+import type { Progress } from '../progress.ts';
 import { cite, usedParents } from '../retrieval/query.ts';
 import type { TurnOutcome } from '../telemetry/attributes.ts';
 import { traceTurn } from '../telemetry/telemetry.ts';
@@ -35,6 +36,7 @@ export interface TurnDeps extends AgentToolDeps {
 export interface TurnOptions {
   /** False on the re-run after Undo, so the model cannot save the same message again. */
   saving?: boolean;
+  progress?: Progress;
 }
 
 function userText(message: InboundMessage): string {
@@ -124,8 +126,16 @@ export async function runTurn(
   options?: TurnOptions,
 ): Promise<TurnReply> {
   const saving = options?.saving ?? true;
+  const progress = options?.progress;
   const now = deps.now ?? (() => new Date());
-  const turn: AgentTurn = { message, effects: {}, shown: new Map() };
+
+  const turn: AgentTurn = {
+    message,
+    effects: {},
+    shown: new Map(),
+    ...(progress === undefined ? {} : { progress }),
+  };
+
   const { save_memory: save, ...rest } = createAgentTools(deps, turn);
   const tools: ToolSpecs = saving ? { ...rest, save_memory: save } : rest;
 
@@ -145,6 +155,8 @@ export async function runTurn(
     }, TURN_TIMEOUT_MS);
 
     try {
+      progress?.('thinking');
+
       const { text, calls } = await deps.model.run(request, tools, MAX_STEPS, {
         signal: budget.signal,
         functionId: 'turn',

@@ -507,6 +507,25 @@ describe('createIngestionPipeline', () => {
     expect(storage.removed).toEqual([]);
   });
 
+  it('reports reading then saving for a file, and only saving for a note', async () => {
+    const { pipeline } = harness();
+    const stages: string[] = [];
+    const progress = (stage: string) => stages.push(stage);
+
+    await pipeline.ingest(
+      { source: 'telegram', message: message({ type: 'photo', file: { fileId: 'big' } }) },
+      { progress },
+    );
+
+    expect(stages).toStrictEqual(['reading', 'saving']);
+
+    stages.length = 0;
+
+    await pipeline.ingest({ source: 'telegram', message: message() }, { progress });
+
+    expect(stages).toStrictEqual(['saving']);
+  });
+
   it('creates the collection on init and needs no checkpointer', async () => {
     const { pipeline, store } = harness();
     const init = vi.spyOn(store, 'init');

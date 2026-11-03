@@ -6,6 +6,7 @@ import { pool } from '../db/client.ts';
 import { embeddings } from '../llm/embeddings.ts';
 import { llmRouter } from '../llm/router.ts';
 import type { MemoryCategory, MemoryKind } from '../memory/payload.ts';
+import type { Progress, Stage } from '../progress.ts';
 import { r2Storage } from '../storage/r2.ts';
 import { qdrantStore } from '../vector/qdrant.ts';
 import type { PipelineDeps } from './deps.ts';
@@ -16,7 +17,7 @@ import { createFileHandlerNode } from './nodes/file-handler.ts';
 import { createReceiverNode } from './nodes/receiver.ts';
 import { createStorageNode } from './nodes/storage.ts';
 import { IngestionState, requireEnrichment, requireStored } from './state.ts';
-import type { IngestionInput } from './state.ts';
+import type { IngestionInput, IngestionStateType } from './state.ts';
 import { createUrlFetcher } from './url.ts';
 import { undoIngest } from './undo.ts';
 import type { UndoTarget } from './undo.ts';
@@ -31,10 +32,20 @@ export interface IngestResult {
   points: number;
 }
 
+export interface IngestOptions {
+  progress?: Progress;
+}
+
 export interface IngestionPipeline {
   init(): Promise<void>;
-  ingest(input: IngestionInput): Promise<IngestResult>;
+  ingest(input: IngestionInput, options?: IngestOptions): Promise<IngestResult>;
   undo(target: UndoTarget): Promise<boolean>;
+}
+
+function firstStage(input: IngestionInput): Stage {
+  const { message } = input;
+
+  return message.file === undefined && message.type !== 'url' ? 'saving' : 'reading';
 }
 
 type Checkpointer = BaseCheckpointSaver & { setup?: () => Promise<void> };
@@ -68,10 +79,30 @@ export function createIngestionPipeline(
       await Promise.all([checkpointer?.setup?.(), deps.store.init()]);
     },
 
-    async ingest(input) {
-      const state = await graph.invoke(input, {
+    async ingest(input, options) {
+      const progress = options?.progress;
+      const first = firstStage(input);
+
+      progress?.(first);
+
+      const stream = await graph.stream(input, {
         configurable: { thread_id: `${input.source}:${input.message.sourceRef}` },
+        streamMode: ['updates', 'values'],
       });
+
+      let state: IngestionStateType | undefined;
+
+      for await (const [mode, chunk] of stream) {
+        if (mode === 'values') {
+          state = chunk;
+        } else if (first === 'reading' && 'extract' in chunk) {
+          progress?.('saving');
+        }
+      }
+
+      if (state === undefined) {
+        throw new Error('The ingestion graph ended without a state');
+      }
 
       const enrichment = requireEnrichment(state);
 

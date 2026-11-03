@@ -753,6 +753,100 @@ describe('createBot', () => {
     expect(sent.at(-1)?.method).toBe('answerCallbackQuery');
   });
 
+  it('shows the stages as drafts under the message and stops them before the reply', async () => {
+    const { bot, sent } = harness({
+      turn: async (_message, _context, options) => {
+        options?.progress?.('searching');
+        await Promise.resolve();
+
+        return { text: 'Tuesday at 10.', keyboard: 'none' };
+      },
+    });
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(sent.map((call) => call.method)).toEqual(['sendMessageDraft', 'sendMessage']);
+    expect(sent[0]?.payload).toEqual({ chat_id: 7, draft_id: 10, text: 'Searching memory' });
+  });
+
+  it('ends a draft still in flight before the reply goes out', async () => {
+    const { bot, sent } = harness({
+      turn: async (_message, _context, options) => {
+        options?.progress?.('thinking');
+        await Promise.resolve();
+
+        return { text: 'Hi!', keyboard: 'none' };
+      },
+    });
+
+    let draft: { readonly aborted: boolean } | undefined;
+    let draftEndedFirst: boolean | undefined;
+
+    bot.api.config.use((prev, method, payload, signal) => {
+      if (method === 'sendMessageDraft') {
+        draft = signal;
+
+        return new Promise((_, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      }
+
+      if (method === 'sendMessage') {
+        draftEndedFirst = draft?.aborted;
+      }
+
+      return prev(method, payload, signal);
+    });
+
+    await bot.handleUpdate(askUpdate());
+
+    expect(draftEndedFirst).toBe(true);
+    expect(sent.map((call) => call.method)).toEqual(['sendMessage']);
+  });
+
+  it('shows a draft again during the re-run after Undo', async () => {
+    const { bot, sent } = harness({
+      turn: async (_message, _context, options) => {
+        options?.progress?.('thinking');
+        await Promise.resolve();
+
+        return { text: 'Not kept.', keyboard: 'none' };
+      },
+    });
+
+    await bot.handleUpdate(
+      update({
+        callback_query: {
+          id: 'cb-undo',
+          from: person(ADMIN),
+          chat_instance: 'ci',
+          data: 'undo',
+          message: {
+            message_id: 51,
+            date: 1_700_000_001,
+            chat: { id: 7, type: 'private' },
+            text: 'Saved note · other',
+            reply_to_message: {
+              message_id: 10,
+              date: 1_700_000_000,
+              chat: { id: 7, type: 'private' },
+              from: person(ADMIN),
+              text: 'buy milk',
+            },
+          },
+        },
+      }),
+    );
+
+    expect(sent.map((call) => call.method)).toEqual([
+      'answerCallbackQuery',
+      'sendMessageDraft',
+      'sendMessage',
+    ]);
+
+    expect(sent[1]?.payload).toEqual({ chat_id: 7, draft_id: 10, text: 'Thinking' });
+  });
+
   it('answers a callback that has no original message', async () => {
     const { bot, sent, undone } = harness();
 

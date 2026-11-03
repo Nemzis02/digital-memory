@@ -11,6 +11,7 @@ import type { InboundFile, InboundMessage } from '../../core/ingestion/inbound.t
 import { turnBody } from '../../core/ingestion/inbound.ts';
 import type { ObjectStorage } from '../../core/storage/object-storage.ts';
 import { sendCaptioned, sendFiles } from '../attachments.ts';
+import { progressDisplay } from '../progress.ts';
 
 const log = logger.child({ module: 'bot/handlers' });
 
@@ -214,10 +215,22 @@ export async function handleMessage(
     return;
   }
 
+  const display = progressDisplay(ctx.api, message.chat, message.message_id);
+
   try {
-    await dispatch(deps, inbound, (reply) => sendReply(ctx, message.message_id, reply, storage));
+    await dispatch(
+      deps,
+      inbound,
+      async (reply) => {
+        await display.stop();
+        return sendReply(ctx, message.message_id, reply, storage);
+      },
+      { progress: display.report },
+    );
   } catch (error) {
     log.error('failed to store message', { error });
+
+    await display.stop();
 
     const sent = await ctx.reply(STORE_FAILED, {
       reply_parameters: { message_id: message.message_id },
@@ -226,6 +239,8 @@ export async function handleMessage(
     await recordFailure(deps, inbound, String(sent.message_id)).catch((appendError: unknown) => {
       log.error('failed to record the failure', { error: appendError });
     });
+  } finally {
+    await display.stop();
   }
 }
 
@@ -392,18 +407,31 @@ export async function handleCallback(
       log.error('failed to undo the ingestion', { error, sourceRef: original.sourceRef });
     });
 
+  const display = progressDisplay(ctx.api, message.chat, accessible.message_id);
+
   try {
     await dispatch(
       deps,
       original,
-      (reply) => sendReply(ctx, accessible.message_id, reply, storage),
-      { saving: false, userTurn: { body: UNDO, sourceRef: callback.id } },
+      async (reply) => {
+        await display.stop();
+        return sendReply(ctx, accessible.message_id, reply, storage);
+      },
+      {
+        saving: false,
+        userTurn: { body: UNDO, sourceRef: callback.id },
+        progress: display.report,
+      },
     );
   } catch (error) {
     log.error('failed to reroute message', { error });
 
+    await display.stop();
+
     await ctx.reply(STORE_FAILED, {
       reply_parameters: { message_id: accessible.message_id },
     });
+  } finally {
+    await display.stop();
   }
 }

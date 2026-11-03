@@ -7,6 +7,7 @@ import type { ForgetRequests } from '../forget/requests.ts';
 import { logger } from '../logging/logger.ts';
 import type { MemorySource } from '../memory/payload.ts';
 import type { IngestionPipeline } from '../pipeline/graph.ts';
+import type { Progress } from '../progress.ts';
 import { NOTHING_FOUND } from '../retrieval/answer.ts';
 import { traceTurn } from '../telemetry/telemetry.ts';
 import type { InboundMessage } from './inbound.ts';
@@ -40,6 +41,21 @@ export interface DispatchOptions {
   /** False on the re-run after Undo. */
   saving?: boolean;
   userTurn?: { body: string; sourceRef: string };
+  progress?: Progress;
+}
+
+function turnOptions(options: DispatchOptions | undefined): TurnOptions | undefined {
+  const saving = options?.saving;
+  const progress = options?.progress;
+
+  if (saving === undefined && progress === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(saving === undefined ? {} : { saving }),
+    ...(progress === undefined ? {} : { progress }),
+  };
 }
 
 export function forgetResult(removed: number, total: number): RouteReply {
@@ -82,8 +98,11 @@ function captionless(message: InboundMessage): boolean {
 async function respond(
   deps: RouteDeps,
   message: InboundMessage,
-  saving: boolean | undefined,
+  options: DispatchOptions | undefined,
 ): Promise<RouteReply> {
+  const saving = options?.saving;
+  const progress = options?.progress;
+
   // A file with no caption leaves nothing for a model to decide, so it is kept as is.
   if (captionless(message)) {
     if (saving === false) {
@@ -93,7 +112,10 @@ async function respond(
     const identity = { source: deps.source, chatRef: message.chatRef, userRef: message.userRef };
 
     return traceTurn(identity, async (setOutcome) => {
-      const result = await deps.pipeline.ingest({ source: deps.source, message });
+      const result = await deps.pipeline.ingest(
+        { source: deps.source, message },
+        progress === undefined ? {} : { progress },
+      );
 
       log.info('ingested', { id: result.id, type: message.type, points: result.points });
       setOutcome('saved');
@@ -110,7 +132,7 @@ async function respond(
     message.replyToSourceRef,
   );
 
-  const reply = await deps.turn(message, context, saving === undefined ? undefined : { saving });
+  const reply = await deps.turn(message, context, turnOptions(options));
 
   return reply.keyboard === 'forget' ? requested(deps, message, reply) : reply;
 }
@@ -121,7 +143,7 @@ export async function dispatch(
   send: (reply: RouteReply) => Promise<string>,
   options?: DispatchOptions,
 ): Promise<RouteReply> {
-  const reply = await respond(deps, message, options?.saving);
+  const reply = await respond(deps, message, options);
   const sentRef = await send(reply);
   const userTurn = options?.userTurn ?? { body: turnBody(message), sourceRef: message.sourceRef };
 
