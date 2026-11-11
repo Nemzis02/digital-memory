@@ -46,6 +46,9 @@ Phase 2, and the only question was whether to pretend otherwise until then.
    inherit yesterday's thread. `reply_to_message` stays as an explicit jump: replying to an
    older message pulls that one turn back in. Conversation turns are not memories and are never
    written to Qdrant.
+   _Amended 2026-11-11 by ADR 009:_ an MCP thread is not a conversation. The transport has no
+   thread, so an MCP call writes no `conversations` row; each tool call is one trace with
+   source `mcp`.
 6. **PostgreSQL is the state store, and LangGraph checkpoints into it.**
    `@langchain/langgraph-checkpoint-postgres` resumes a failed run from its last completed node
    instead of replaying OCR and extraction from the start. Drizzle owns the application schema
@@ -58,6 +61,7 @@ Phase 2, and the only question was whether to pretend otherwise until then.
    2026-07-28 removes sessions, so the transport no longer rules out serverless. One process
    stays: the webhook handlers run the ingestion graph and the model turn in this process, and
    the OAuth issuer, the MCP resource and the webhook share one origin.
+   _Amended 2026-11-11:_ that origin is `PUBLIC_URL` on a managed Kubernetes cluster (ADR 010).
 
 ## Open
 

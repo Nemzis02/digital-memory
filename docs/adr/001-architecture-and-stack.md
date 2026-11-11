@@ -10,4 +10,8 @@ We are building a personal life-management knowledge hub (`digital-memory`). Con
 2. **Cloudflare R2 for Object Storage:** Private bucket with Pre-signed URLs for zero-egress cost and high security.
 3. **Telegram OAuth2 for MCP:** Cursor authentication will use standard OAuth2 flow verified against the user's Telegram ID.
    _Amended 2026-10-22, checked against MCP spec 2026-07-28:_ MCP is Phase 2 and is not built yet. The transport is Streamable HTTP, which has no sessions in that revision; HTTP+SSE is deprecated. The MCP server is an OAuth 2.1 resource server: Authorization Code with PKCE (S256), protected resource metadata at `/.well-known/oauth-protected-resource` (RFC 9728), and tokens bound to this server as audience (RFC 8707). Clients register with a Client ID Metadata Document; Dynamic Client Registration (RFC 7591) is deprecated and is only a fallback. Telegram Login stays the identity provider behind `/oauth/authorize`. The clients are any MCP client (Claude, Cursor), not only Cursor.
+   _Amended 2026-11-11 by ADR 009:_ the identity provider is Telegram's OpenID Connect
+   provider (`oauth.telegram.org`), which BotFather now offers in place of the Login Widget.
+   A client is known by its Client ID Metadata Document or by a pre-registered row; there is
+   no registration endpoint. ADR 010 chooses the host behind the public URL.
 4. **LangGraph Engine:** Manages ingestion pipelines (OCR -> Metadata Extraction -> Parent-Child Chunking) and query reformulation (HyDE).

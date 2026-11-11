@@ -10,6 +10,7 @@
 
 The read path is spec `002-retrieval`. The MCP server is Phase 2 and has no spec yet. Anything
 not listed above is deferred on purpose, not forgotten.
+_Amended 2026-11-11:_ the MCP server is spec `011-mcp-server` (ADR 009).
 
 ## Task 1 — Done (2026-10-10)
 

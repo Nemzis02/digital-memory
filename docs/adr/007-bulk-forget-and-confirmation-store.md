@@ -58,7 +58,9 @@ cannot ride on the button.
 ## Open
 
 - A TTL or a cleanup of consumed rows, when the table grows or a second user arrives.
-- Per-user scoping of a request, which MCP or multi-user would need.
+- Per-user scoping of a request, which MCP or multi-user would need. _Decided 2026-11-11 in
+  ADR 009:_ the row gains an optional user id and client id, and the MCP forget tool takes
+  its confirmation through them.
 - Telegram refuses edits on messages older than 48 hours, so the keyboard removal can fail
   silently; the consumed row still makes the press harmless.
 - The row is consumed before the delete runs. A Qdrant or R2 failure therefore burns the

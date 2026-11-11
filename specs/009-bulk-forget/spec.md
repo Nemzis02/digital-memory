@@ -21,3 +21,4 @@ summary only, so two copies of one document cannot be told apart or removed toge
 
 Localised fixed strings (the confirmation and result stay English). Editing a memory. Forget
 over MCP. Cleanup of consumed requests.
+_Amended 2026-11-11:_ forget over MCP is spec `011-mcp-server`.

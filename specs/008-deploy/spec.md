@@ -21,3 +21,5 @@ collection setup or the conversation store.
 
 Choosing a hosting provider and deploying to it: a separate ADR when Phase 2 needs a public
 URL. Kubernetes manifests. Image signing (cosign) is noted in Open in the plan, not done.
+_Amended 2026-11-11:_ ADR 010 chooses the host and spec `012-k8s-deploy` carries the
+manifests.

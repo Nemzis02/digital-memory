@@ -64,7 +64,7 @@ non-conforming message cannot land.
 - **Orchestration:** `@langchain/langgraph`
 - **Vector Storage & Search:** Qdrant Cloud (Hybrid Search: Dense Vectors + Sparse BM25)
 - **Object Storage:** Cloudflare R2 (S3 API via `@aws-sdk/client-s3`)
-- **MCP Framework:** `@modelcontextprotocol/sdk` (Phase 2, not yet installed)
+- **MCP Framework:** `@modelcontextprotocol/server`, `core` and `node` (SDK v2, Phase 2, not yet installed)
 - **Primary LLM Routing:** Gemini 3.8 Flash (Ingestion/Fast) & Claude Sonnet 5.5 / GPT-5.6 Sol (Reasoning/MCP)
 
 ## Non-Negotiable Rules & Security
