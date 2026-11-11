@@ -27,6 +27,7 @@
 - **Article Extraction:** `@mozilla/readability` over `linkedom` for saved links
 - **Observability:** Langfuse over OpenTelemetry (`@langfuse/vercel-ai-sdk`, `@langfuse/otel`, `@langfuse/tracing`, `@opentelemetry/sdk-trace-node`)
 - **Planned (Phase 2):** `@modelcontextprotocol/server`, `core` and `node` (MCP SDK v2), `jose` (ID token checks)
+- **Planned Hosting (Phase 2):** managed **Kubernetes** (Scaleway Kapsule, one node), a **Helm** chart in `deploy/chart/`, **Argo CD** app-of-apps for GitOps, **Traefik** with **cert-manager** for TLS, **CloudNativePG** for Postgres with backups to R2, **Sealed Secrets** ([ADR 010](docs/adr/010-kubernetes-hosting-and-gitops.md))
 
 ---
 
