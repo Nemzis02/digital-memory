@@ -1,7 +1,8 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.ts';
 import { database } from '../db/client.ts';
-import { conversationTurns, conversations, users } from '../db/schema.ts';
+import { conversationTurns, conversations } from '../db/schema.ts';
+import { upsertUser } from '../db/users.ts';
 import type { ConversationTurn } from './context.ts';
 
 export interface ExchangeTurn {
@@ -97,30 +98,11 @@ export function createConversationLog(db: Database = database()): ConversationLo
     },
 
     async append(exchange) {
-      const id = telegramId(exchange.userRef);
-
-      const [user] = await db
-        .insert(users)
-        .values({
-          telegramId: id,
-          ...(exchange.displayName === undefined ? {} : { displayName: exchange.displayName }),
-        })
-        .onConflictDoUpdate({
-          target: users.telegramId,
-          set:
-            exchange.displayName === undefined
-              ? { telegramId: id }
-              : { displayName: exchange.displayName },
-        })
-        .returning({ id: users.id });
-
-      if (user === undefined) {
-        throw new Error('User upsert returned no row');
-      }
+      const userId = await upsertUser(db, telegramId(exchange.userRef), exchange.displayName);
 
       const [conversation] = await db
         .insert(conversations)
-        .values({ userId: user.id, source: 'telegram', externalId: exchange.chatRef })
+        .values({ userId, source: 'telegram', externalId: exchange.chatRef })
         .onConflictDoUpdate({
           target: [conversations.source, conversations.externalId],
           set: { updatedAt: new Date() },

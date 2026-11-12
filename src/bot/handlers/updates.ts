@@ -289,7 +289,7 @@ async function confirmForget(
   let total: number;
 
   try {
-    const ids = await deps.forgetRequests.take(requestId, String(chat.id));
+    const ids = await deps.forgetRequests.take(requestId, { chatRef: String(chat.id) });
 
     if (ids === undefined) {
       await ctx.answerCallbackQuery({ text: FORGET_USED });

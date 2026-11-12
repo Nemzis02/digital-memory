@@ -6,7 +6,7 @@ integration tasks are not blocked. ADR 009 is the decision; this spec is the pla
 - [x] Task 1: Schema: the new columns, `oauth_login_sessions`, `npm run db:generate`,
       integration test that asserts the columns and the table. Env variables, the refine,
       `SECRET_ENV_KEYS`, `.env.example`. Tests.
-- [ ] Task 2: Core stores on Drizzle: clients, codes, tokens with families and rotation,
+- [x] Task 2: Core stores on Drizzle: clients, codes, tokens with families and rotation,
       login sessions; `forget_requests` user, client and expiry scoping. Integration tests.
 - [ ] Task 3: `src/core/memory/read.ts`: move `listed()` and `found()`, add `getMemory()` and
       `fileLink()`; the agent tools import them. Unit tests.

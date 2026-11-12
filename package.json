@@ -18,7 +18,7 @@
     "format:check": "prettier --check .",
     "db:up": "${COMPOSE:-podman compose} up -d",
     "db:down": "${COMPOSE:-podman compose} down",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && prettier --write drizzle",
     "db:migrate": "node --env-file-if-exists=.env src/core/db/migrate-cli.ts",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",

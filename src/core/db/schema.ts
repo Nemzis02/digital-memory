@@ -9,6 +9,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { AuthorizeRequest } from '../oauth/login-sessions.ts';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -57,7 +58,7 @@ export const oauthAuthorizationCodes = pgTable(
 // Holds one browser login between /oauth/authorize and the consent approval.
 export const oauthLoginSessions = pgTable('oauth_login_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  request: jsonb('request').notNull(),
+  request: jsonb('request').$type<AuthorizeRequest>().notNull(),
   state: text('state').notNull(),
   nonce: text('nonce').notNull(),
   codeVerifier: text('code_verifier').notNull(),

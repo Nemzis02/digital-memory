@@ -239,10 +239,10 @@ function harness(extras?: {
 
         return Promise.resolve(REQUEST);
       },
-      take(id, chatRef) {
+      take(id, scope) {
         const request = requests.get(id);
 
-        if (request === undefined || request.chatRef !== chatRef) {
+        if (request === undefined || !('chatRef' in scope) || request.chatRef !== scope.chatRef) {
           return Promise.resolve(undefined);
         }
 
