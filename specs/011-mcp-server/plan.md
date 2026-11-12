@@ -17,6 +17,7 @@ src/mcp/oauth/consent.ts           # GET|POST /oauth/consent: page and approval
 src/mcp/oauth/token.ts             # POST /oauth/token: code grant, refresh rotation
 src/mcp/oauth/cimd.ts              # Client ID Metadata Document fetch and validation
 src/mcp/oauth/bearer.ts            # bearer check: hash, expiry, resource, scope
+src/mcp/oauth/scopes.ts            # the three scopes, tool-to-scope map
 src/mcp/oauth/rate-limit.ts        # fixed window per address
 src/mcp/routes.ts                  # HttpRoute list, only when PUBLIC_URL is set
 src/core/oauth/clients.ts          # oauth_clients on Drizzle
@@ -63,9 +64,10 @@ true`, `authorization_response_iss_parameter_supported: true`, `scopes_supported
 `registration_endpoint`.
 
 A `POST /mcp` without a valid bearer gets 401 with `WWW-Authenticate: Bearer
-resource_metadata="<origin>/.well-known/oauth-protected-resource"`. A valid bearer with a
-missing scope gets 403 with `error="insufficient_scope"`, `scope="<every missing scope>"` and
-the same `resource_metadata`.
+resource_metadata="<origin>/.well-known/oauth-protected-resource"`; when a token was
+presented and refused, the header also carries `error="invalid_token"` (RFC 6750 section
+3.1). A valid bearer with a missing scope gets 403 with `error="insufficient_scope"`,
+`scope="<every missing scope>"` and the same `resource_metadata`.
 
 ## 2. Authorization Flow
 
@@ -208,9 +210,10 @@ error that says why (the issuer cannot finish a login without it).
 Each tool call runs inside `traceTurn({ source: 'mcp', chatRef: clientId, userRef: userId })`,
 so Langfuse shows one trace per call with the tool name, as for a bot turn (ADR 005). OAuth
 events log at `info` with the client id and the hashed user ref: login started, login
-refused, consent given, token issued, token refreshed, family revoked. A failed bearer check
-logs at `warn` with the first 8 hex characters of the token hash. No log line carries a code,
-a token, the client secret or an ID token.
+refused, consent given, token issued, token refreshed, family revoked. A refused bearer token
+logs at `warn` with the first 8 hex characters of the token hash; a request with no token is
+the normal first contact of a client and logs at `debug`. No log line carries a code, a
+token, the client secret or an ID token.
 
 The rate limit is a fixed window of 60 seconds and 30 requests per client address on
 `/oauth/authorize`, `/oauth/callback` and `/oauth/token`, answered with 429. The map lives in

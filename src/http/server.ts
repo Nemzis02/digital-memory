@@ -26,6 +26,14 @@ export function finish(req: IncomingMessage, res: ServerResponse, status: number
   res.writeHead(status).end();
 }
 
+export function oneHeader(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value.length === 1 ? value[0] : undefined;
+  }
+
+  return value;
+}
+
 export function createHttpServer(routes: readonly HttpRoute[]): Server {
   return createServer((req, res) => {
     const path = requestPath(req.url);

@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { finish, type HttpRoute } from '../http/server.ts';
+import { finish, type HttpRoute, oneHeader } from '../http/server.ts';
 
-export { requestPath } from '../http/server.ts';
+export { oneHeader, requestPath } from '../http/server.ts';
 
 export const WEBHOOK_PATH = '/telegram/webhook';
 
@@ -16,14 +16,6 @@ export function secretHeaderMatches(provided: string | undefined, expected: stri
   const wanted = createHash('sha256').update(expected).digest();
 
   return timingSafeEqual(actual, wanted);
-}
-
-export function oneHeader(value: string | string[] | undefined): string | undefined {
-  if (Array.isArray(value)) {
-    return value.length === 1 ? value[0] : undefined;
-  }
-
-  return value;
 }
 
 export function telegramWebhookUrl(publicUrl: string): string {

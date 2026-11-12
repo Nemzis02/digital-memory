@@ -10,7 +10,7 @@ integration tasks are not blocked. ADR 009 is the decision; this spec is the pla
       login sessions; `forget_requests` user, client and expiry scoping. Integration tests.
 - [x] Task 3: `src/core/memory/read.ts`: move `listed()` and `found()`, add `getMemory()` and
       `fileLink()`; the agent tools import them. Unit tests.
-- [ ] Task 4: Metadata routes and the bearer check with resource and scope; the 401 and 403
+- [x] Task 4: Metadata routes and the bearer check with resource and scope; the 401 and 403
       challenges. Unit tests.
 - [ ] Task 5: Client resolution: metadata-document fetch and validation with an injected
       fetch, registered lookup. Unit tests for every refusal.
