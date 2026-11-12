@@ -1,4 +1,14 @@
-import { bigint, index, pgEnum, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -7,12 +17,18 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const oauthClientKind = pgEnum('oauth_client_kind', ['cimd', 'registered']);
+
 export const oauthClients = pgTable('oauth_clients', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: text('client_id').notNull().unique(),
   clientSecretHash: text('client_secret_hash'),
   name: text('name').notNull(),
   redirectUris: text('redirect_uris').array().notNull(),
+  kind: oauthClientKind('kind').notNull(),
+  metadataUrl: text('metadata_url'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }),
+  etag: text('etag'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -30,12 +46,26 @@ export const oauthAuthorizationCodes = pgTable(
     codeChallenge: text('code_challenge').notNull(),
     codeChallengeMethod: text('code_challenge_method').notNull(),
     scope: text('scope').notNull(),
+    resource: text('resource').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('oauth_codes_expires_at_idx').on(table.expiresAt)],
 );
+
+// Holds one browser login between /oauth/authorize and the consent approval.
+export const oauthLoginSessions = pgTable('oauth_login_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  request: jsonb('request').notNull(),
+  state: text('state').notNull(),
+  nonce: text('nonce').notNull(),
+  codeVerifier: text('code_verifier').notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const conversationSource = pgEnum('conversation_source', ['telegram', 'mcp']);
 
@@ -78,6 +108,9 @@ export const forgetRequests = pgTable('forget_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   chatRef: text('chat_ref').notNull(),
   memoryIds: uuid('memory_ids').array().notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  clientId: text('client_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
 });
@@ -96,6 +129,8 @@ export const oauthTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     scope: text('scope').notNull(),
+    resource: text('resource').notNull(),
+    familyId: uuid('family_id').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -103,5 +138,6 @@ export const oauthTokens = pgTable(
   (table) => [
     index('oauth_tokens_user_idx').on(table.userId),
     index('oauth_tokens_expires_at_idx').on(table.expiresAt),
+    index('oauth_tokens_family_idx').on(table.familyId),
   ],
 );

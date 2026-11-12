@@ -64,11 +64,22 @@ const envSchema = z
     LANGFUSE_BASE_URL: z
       .url('LANGFUSE_BASE_URL must be a valid URL')
       .default('https://cloud.langfuse.com'),
+
+    // MCP and the OAuth issuer, served only when PUBLIC_URL is set.
+    TELEGRAM_OIDC_CLIENT_SECRET: nonEmpty('TELEGRAM_OIDC_CLIENT_SECRET').optional(),
+    OAUTH_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+    OAUTH_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2_592_000),
+    MCP_MAX_FILE_BYTES: z.coerce.number().int().positive().default(10_485_760),
   })
   .refine((env) => env.PUBLIC_URL === undefined || env.TELEGRAM_WEBHOOK_SECRET !== undefined, {
     error:
       'TELEGRAM_WEBHOOK_SECRET is required once PUBLIC_URL is set: the secret header is all that separates a real Telegram update from a forged POST, and the admin guard cannot help because a forged update can claim any from.id',
     path: ['TELEGRAM_WEBHOOK_SECRET'],
+  })
+  .refine((env) => env.PUBLIC_URL === undefined || env.TELEGRAM_OIDC_CLIENT_SECRET !== undefined, {
+    error:
+      'TELEGRAM_OIDC_CLIENT_SECRET is required once PUBLIC_URL is set: the OAuth issuer exchanges the Telegram login code with this secret and cannot finish a login without it',
+    path: ['TELEGRAM_OIDC_CLIENT_SECRET'],
   })
   .refine((env) => env.LANGFUSE_PUBLIC_KEY === undefined || env.LANGFUSE_SECRET_KEY !== undefined, {
     error:

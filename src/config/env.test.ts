@@ -23,6 +23,9 @@ describe('parseEnv', () => {
     expect(env.TELEGRAM_ADMIN_ID).toBe(123456789);
     expect(env.R2_PRESIGN_TTL_SECONDS).toBe(900);
     expect(env.LLM_STRONG_API_KEY).toBeUndefined();
+    expect(env.OAUTH_ACCESS_TTL_SECONDS).toBe(3600);
+    expect(env.OAUTH_REFRESH_TTL_SECONDS).toBe(2_592_000);
+    expect(env.MCP_MAX_FILE_BYTES).toBe(10_485_760);
   });
 
   it('reads an optional variable left blank as absent', () => {
@@ -60,6 +63,33 @@ describe('parseEnv', () => {
     expect(() =>
       parseEnv({ ...valid, PUBLIC_URL: 'https://memory.example', TELEGRAM_WEBHOOK_SECRET: '' }),
     ).toThrow(/TELEGRAM_WEBHOOK_SECRET/);
+  });
+
+  it('refuses a reachable issuer with no OIDC secret to finish a login', () => {
+    const reachable = {
+      ...valid,
+      PUBLIC_URL: 'https://memory.example',
+      TELEGRAM_WEBHOOK_SECRET: 'webhook-secret-of-16',
+    };
+
+    expect(() => parseEnv(reachable)).toThrow(/TELEGRAM_OIDC_CLIENT_SECRET/);
+
+    expect(() => parseEnv({ ...reachable, TELEGRAM_OIDC_CLIENT_SECRET: '  ' })).toThrow(
+      /TELEGRAM_OIDC_CLIENT_SECRET/,
+    );
+
+    expect(
+      parseEnv({ ...reachable, TELEGRAM_OIDC_CLIENT_SECRET: 'oidc-secret' })
+        .TELEGRAM_OIDC_CLIENT_SECRET,
+    ).toBe('oidc-secret');
+  });
+
+  it('rejects a file cap or token lifetime that is not a positive integer', () => {
+    expect(() => parseEnv({ ...valid, MCP_MAX_FILE_BYTES: '0' })).toThrow(/MCP_MAX_FILE_BYTES/);
+
+    expect(() => parseEnv({ ...valid, OAUTH_ACCESS_TTL_SECONDS: '1.5' })).toThrow(
+      /OAUTH_ACCESS_TTL_SECONDS/,
+    );
   });
 
   it('allows long polling, where there is no endpoint to forge against', () => {

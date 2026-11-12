@@ -20,6 +20,15 @@ describe('redact', () => {
     );
   });
 
+  it('masks the OIDC client secret', () => {
+    vi.stubEnv('TELEGRAM_OIDC_CLIENT_SECRET', 'oidc-client-secret-value');
+    resetSecretsCache();
+
+    expect(maskSecrets('exchange with oidc-client-secret-value failed')).toBe(
+      'exchange with [REDACTED] failed',
+    );
+  });
+
   it('leaves text without secrets untouched', () => {
     expect(maskSecrets('nothing sensitive here')).toBe('nothing sensitive here');
   });

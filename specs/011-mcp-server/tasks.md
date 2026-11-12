@@ -3,7 +3,7 @@
 Blocked on spec `012-k8s-deploy` for a public URL in the live tests only; the unit and
 integration tasks are not blocked. ADR 009 is the decision; this spec is the plan.
 
-- [ ] Task 1: Schema: the new columns, `oauth_login_sessions`, `npm run db:generate`,
+- [x] Task 1: Schema: the new columns, `oauth_login_sessions`, `npm run db:generate`,
       integration test that asserts the columns and the table. Env variables, the refine,
       `SECRET_ENV_KEYS`, `.env.example`. Tests.
 - [ ] Task 2: Core stores on Drizzle: clients, codes, tokens with families and rotation,
