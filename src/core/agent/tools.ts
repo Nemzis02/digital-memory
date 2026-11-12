@@ -4,12 +4,12 @@ import type { ForgetCandidate } from '../ingestion/reply.ts';
 import type { Embeddings } from '../llm/embeddings.ts';
 import type { ToolSpec } from '../llm/router.ts';
 import { logger } from '../logging/logger.ts';
-import type { MemoryPayload, MemorySource, MemoryType } from '../memory/payload.ts';
+import { readableSources, type MemoryPayload, type MemorySource } from '../memory/payload.ts';
+import { day, found, listed } from '../memory/read.ts';
 import type { IngestResult, IngestionPipeline } from '../pipeline/graph.ts';
 import type { Progress, Stage } from '../progress.ts';
-import { readableSources, recall, search } from '../retrieval/query.ts';
+import { recall, search } from '../retrieval/query.ts';
 import type { VectorStore } from '../vector/vector-store.ts';
-import { fenceMemory } from './prompt.ts';
 import {
   forgetMemoryInput,
   listMemoriesInput,
@@ -76,47 +76,6 @@ export const AGENT_TOOL_NAMES = [
 ] as const satisfies readonly (keyof AgentTools)[];
 
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
-
-export interface ListedMemory {
-  id: UUID;
-  summary: string;
-  type: MemoryType;
-  created_at: string;
-  event_at?: string;
-}
-
-export interface FoundMemory extends ListedMemory {
-  has_file: boolean;
-  url?: string;
-  text: string;
-}
-
-function day(epoch: number): string {
-  return new Date(epoch * 1000).toISOString().slice(0, 10);
-}
-
-function listed(memory: MemoryPayload): ListedMemory {
-  return {
-    id: memory.id,
-    summary: memory.summary,
-    type: memory.type,
-    created_at: day(memory.created_at),
-    ...(memory.event_at === undefined ? {} : { event_at: day(memory.event_at) }),
-  };
-}
-
-function found(memory: MemoryPayload): FoundMemory {
-  // Only a photo or a document can be attached to the answer; a url memory's stored page is not.
-  const attachable =
-    (memory.type === 'photo' || memory.type === 'document') && memory.r2_file_path !== undefined;
-
-  return {
-    ...listed(memory),
-    has_file: attachable,
-    ...(memory.type === 'url' && memory.source_url !== undefined ? { url: memory.source_url } : {}),
-    text: fenceMemory(memory.id, memory.original_text),
-  };
-}
 
 function candidate(memory: MemoryPayload): ForgetCandidate {
   return {

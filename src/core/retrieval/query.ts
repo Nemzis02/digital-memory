@@ -2,13 +2,13 @@ import type { UUID } from 'node:crypto';
 import type { Embeddings } from '../llm/embeddings.ts';
 import { logger } from '../logging/logger.ts';
 import {
-  MEMORY_SOURCES,
   type MemoryCategory,
   type MemoryKind,
   type MemoryPayload,
   type MemorySource,
   type MemoryType,
 } from '../memory/payload.ts';
+import { attachedFile } from '../memory/read.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, MemoryFilter, SearchHit, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND, type Citation } from './answer.ts';
@@ -51,10 +51,6 @@ function memoryFilter(input: QueryInput, isChild: boolean): MemoryFilter {
     ...(input.createdAfter === undefined ? {} : { createdAfter: input.createdAfter }),
     ...(input.createdBefore === undefined ? {} : { createdBefore: input.createdBefore }),
   };
-}
-
-export function readableSources(source: MemorySource): MemorySource[] {
-  return source === 'eval' ? ['eval'] : MEMORY_SOURCES.filter((name) => name !== 'eval');
 }
 
 export async function recall(store: VectorStore, input: QueryInput): Promise<MemoryPayload[]> {
@@ -140,22 +136,14 @@ export async function search(deps: SearchDeps, input: QueryInput): Promise<Memor
 export function cite(parents: readonly MemoryPayload[]): Citation[] {
   return parents.map((parent) => {
     const cited = { id: parent.id, summary: parent.summary };
-    const key = parent.r2_file_path;
 
     if (parent.type === 'url' && parent.source_url !== undefined) {
       return { ...cited, url: parent.source_url };
     }
 
-    if ((parent.type === 'photo' || parent.type === 'document') && key !== undefined) {
-      const name = parent.file_name;
+    const file = attachedFile(parent);
 
-      return {
-        ...cited,
-        file: { key, type: parent.type, ...(name === undefined ? {} : { name }) },
-      };
-    }
-
-    return cited;
+    return file === undefined ? cited : { ...cited, file };
   });
 }
 

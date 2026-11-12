@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMemoryPayload } from './payload.ts';
+import { parseMemoryPayload, readableSources } from './payload.ts';
 
 const valid = {
   id: '3f0c6f0e-2d1a-4f6b-9f1e-8c4b2a7d5e10',
@@ -108,5 +108,13 @@ describe('parseMemoryPayload', () => {
 
   it('rejects a point id Qdrant would refuse', () => {
     expect(() => parseMemoryPayload({ ...valid, id: 'msg-1' })).toThrow(TypeError);
+  });
+});
+
+describe('readableSources', () => {
+  it('keeps the eval corpus apart from real memories', () => {
+    expect(readableSources('telegram')).toStrictEqual(['telegram', 'mcp']);
+    expect(readableSources('mcp')).toStrictEqual(['telegram', 'mcp']);
+    expect(readableSources('eval')).toStrictEqual(['eval']);
   });
 });

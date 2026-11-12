@@ -4,16 +4,7 @@ import type { MemoryPayload } from '../memory/payload.ts';
 import type { ObjectStorage } from '../storage/object-storage.ts';
 import type { ListQuery, SearchHit, SearchQuery, VectorStore } from '../vector/vector-store.ts';
 import { NOTHING_FOUND } from './answer.ts';
-import {
-  cite,
-  forget,
-  forgetMany,
-  readableSources,
-  recall,
-  search,
-  usedParents,
-  type SearchDeps,
-} from './query.ts';
+import { cite, forget, forgetMany, recall, search, usedParents, type SearchDeps } from './query.ts';
 
 const parent: MemoryPayload = {
   id: '3f0c6f0e-2d1a-4f6b-9f1e-8c4b2a7d5e10',
@@ -294,14 +285,6 @@ describe('search', () => {
 
     expect(box.embeds).toStrictEqual([]);
     expect(box.searches).toStrictEqual([]);
-  });
-});
-
-describe('readableSources', () => {
-  it('keeps the eval corpus apart from real memories', () => {
-    expect(readableSources('telegram')).toStrictEqual(['telegram', 'mcp']);
-    expect(readableSources('mcp')).toStrictEqual(['telegram', 'mcp']);
-    expect(readableSources('eval')).toStrictEqual(['eval']);
   });
 });
 

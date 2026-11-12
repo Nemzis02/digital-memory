@@ -42,6 +42,11 @@ export type MemoryCategory = (typeof MEMORY_CATEGORIES)[number];
 
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
+/** The sources a reader may see: eval data stays apart from the real archive, and vice versa. */
+export function readableSources(source: MemorySource): MemorySource[] {
+  return source === 'eval' ? ['eval'] : MEMORY_SOURCES.filter((name) => name !== 'eval');
+}
+
 export const memoryPayloadSchema = z
   .strictObject({
     id: uuid,
