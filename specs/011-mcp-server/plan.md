@@ -111,11 +111,15 @@ WHERE consumed_at IS NULL RETURNING`), checks the client id, the redirect URI, `
    access token (1 hour) and a refresh token (30 days) in one new family, both stored as
    hashes with the scopes and the `resource`. The response carries `token_type: "Bearer"`,
    `expires_in`, `refresh_token` and `scope`.
-6. `grant_type=refresh_token` looks the hash up. An unknown, expired or revoked token gets
-   `invalid_grant`. A valid one is revoked, and a new access and refresh pair is issued in the
-   same family with the same scopes (or a subset, when `scope` narrows). A refresh token that
-   is revoked but presented again revokes every token of its family and answers
-   `invalid_grant`: a stolen token and its owner cannot both keep a valid token.
+6. `grant_type=refresh_token` takes `refresh_token` and `client_id` and looks the hash up. An
+   unknown, expired or revoked token, or one issued to another client, gets `invalid_grant`.
+   A valid one is revoked, and a new access and refresh pair is issued in the same family
+   with the same scopes (or a subset, when `scope` narrows; a `scope` outside the token's
+   gets `invalid_scope` and changes nothing). A refresh token that is revoked but presented
+   again revokes every token of its family and answers `invalid_grant`: a stolen token and
+   its owner cannot both keep a valid token. Every error is a 400 with `error` and
+   `error_description`; a repeated parameter or a body that is not a form is
+   `invalid_request`.
 7. Every `POST /mcp` hashes the bearer, loads the token, requires type `access`, no
    `revoked_at`, an expiry in the future, and `resource` equal to `<origin>/mcp`. The route
    then reads the tool name from `Mcp-Name` (or from the body of a 2025-era `tools/call`)

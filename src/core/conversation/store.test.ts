@@ -64,7 +64,7 @@ describe('createConversationLog', () => {
     ).rejects.toThrow('User upsert returned no row');
   });
 
-  it('writes the user turn before the reply so they sort in that order', async () => {
+  it('writes the user turn and then the reply', async () => {
     const log = createConversationLog(
       scriptedDb([[{ id: userId }], [{ id: conversationId }], undefined, undefined]),
     );

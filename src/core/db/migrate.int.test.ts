@@ -35,6 +35,7 @@ describe('runMigrations', () => {
 
       expect(columns.rows.map((row) => row.column)).toEqual(
         expect.arrayContaining([
+          'conversation_turns.seq',
           'oauth_clients.kind',
           'oauth_clients.metadata_url',
           'oauth_clients.fetched_at',

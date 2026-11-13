@@ -70,7 +70,7 @@ export function createConversationLog(db: Database = database()): ConversationLo
   return {
     async turns(chatRef, replyToSourceRef) {
       const recent = await selectTurns(chatRef)
-        .orderBy(desc(conversationTurns.createdAt))
+        .orderBy(desc(conversationTurns.seq))
         .limit(RECENT_TURN_LIMIT);
 
       const chronological = recent.map(toTurn).reverse();
@@ -83,18 +83,11 @@ export function createConversationLog(db: Database = database()): ConversationLo
       }
 
       const [extra] = await selectTurns(chatRef, replyToSourceRef)
-        .orderBy(asc(conversationTurns.createdAt))
+        .orderBy(asc(conversationTurns.seq))
         .limit(1);
 
-      const replied = extra === undefined ? undefined : toTurn(extra);
-
-      if (replied === undefined) {
-        return chronological;
-      }
-
-      return [...chronological, replied].sort(
-        (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
-      );
+      // A replied-to turn outside the window was written before every turn in it.
+      return extra === undefined ? chronological : [toTurn(extra), ...chronological];
     },
 
     async append(exchange) {
@@ -113,14 +106,11 @@ export function createConversationLog(db: Database = database()): ConversationLo
         throw new Error('Conversation upsert returned no row');
       }
 
-      const createdAt = new Date();
-
       await db.insert(conversationTurns).values({
         conversationId: conversation.id,
         role: 'user',
         body: exchange.user.body,
         sourceRef: exchange.user.sourceRef,
-        createdAt,
       });
 
       await db.insert(conversationTurns).values({
@@ -128,7 +118,6 @@ export function createConversationLog(db: Database = database()): ConversationLo
         role: 'assistant',
         body: exchange.assistant.body,
         sourceRef: exchange.assistant.sourceRef,
-        createdAt: new Date(createdAt.getTime() + 1),
       });
     },
   };

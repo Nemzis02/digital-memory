@@ -9,6 +9,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 const NO_STORE = { 'cache-control': 'no-store', pragma: 'no-cache' };
 
+export const FORM_MAX_BYTES = 4096;
+
 /** The `Set-Cookie` value that carries the login session id for its lifetime. */
 export function loginCookie(id: string, maxAgeSeconds: number): string {
   return `${LOGIN_COOKIE}=${id}; Max-Age=${String(maxAgeSeconds)}; Path=${COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax`;
@@ -100,6 +102,17 @@ export function redirect(
   req.resume();
   res.writeHead(302, { ...NO_STORE, location: url, ...headers });
   res.end();
+}
+
+export function sendJson(
+  req: IncomingMessage,
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+): void {
+  req.resume();
+  res.writeHead(status, { ...NO_STORE, 'content-type': 'application/json' });
+  res.end(JSON.stringify(body));
 }
 
 export function sendHtml(

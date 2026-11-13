@@ -20,13 +20,22 @@ export interface IssuedTokens {
   expiresIn: number;
   scopes: string[];
   familyId: UUID;
+  userId: UUID;
+}
+
+export interface RefreshRequest {
+  clientId: string;
+  /** Narrows the scopes of the new pair; absent keeps the token's scopes. */
+  scopes?: readonly string[];
 }
 
 export type RefreshOutcome =
   | { kind: 'issued'; tokens: IssuedTokens }
   /** A rotated refresh token came back, and this call revoked the rest of its family. */
-  | { kind: 'reused'; familyId: UUID }
-  /** Unknown, expired, not a refresh token, or from a family already revoked. */
+  | { kind: 'reused'; familyId: UUID; userId: UUID }
+  /** `scopes` reaches outside the token's; nothing changed. */
+  | { kind: 'invalid_scope'; granted: string[] }
+  /** Unknown, expired, not a refresh token, issued to another client, or from a family already revoked. */
   | { kind: 'rejected' };
 
 export interface AccessGrant {
@@ -46,10 +55,10 @@ export interface OAuthTokens {
   /** A new family with one access and one refresh token. */
   issue(grant: TokenGrant): Promise<IssuedTokens>;
   /**
-   * Revokes the presented refresh token and issues a new pair in its family. `scopes` must be
-   * a subset of the token's scopes; the caller answers `invalid_scope` before getting here.
+   * Revokes the presented refresh token and issues a new pair in its family. The token must
+   * have been issued to `clientId`.
    */
-  refresh(refreshToken: string, scopes?: readonly string[]): Promise<RefreshOutcome>;
+  refresh(refreshToken: string, request: RefreshRequest): Promise<RefreshOutcome>;
   /** The grant behind a live access token: type access, not revoked, not expired. */
   authenticate(accessToken: string): Promise<AccessGrant | undefined>;
 }
@@ -67,6 +76,7 @@ export function createOAuthTokens(
       expiresIn: options.accessTtlSeconds,
       scopes: [...grant.scopes],
       familyId: grant.familyId,
+      userId: grant.userId,
     };
 
     const shared = {
@@ -105,7 +115,7 @@ export function createOAuthTokens(
       return tokens;
     },
 
-    async refresh(refreshToken, scopes) {
+    async refresh(refreshToken, request) {
       const at = now();
       const tokenHash = hashSecret(refreshToken);
 
@@ -115,7 +125,12 @@ export function createOAuthTokens(
           .from(oauthTokens)
           .where(eq(oauthTokens.tokenHash, tokenHash));
 
-        if (row === undefined || row.type !== 'refresh' || row.expiresAt <= at) {
+        if (
+          row === undefined ||
+          row.type !== 'refresh' ||
+          row.clientId !== request.clientId ||
+          row.expiresAt <= at
+        ) {
           return { kind: 'rejected' };
         }
 
@@ -128,11 +143,20 @@ export function createOAuthTokens(
             .where(and(eq(oauthTokens.familyId, familyId), isNull(oauthTokens.revokedAt)))
             .returning({ tokenHash: oauthTokens.tokenHash });
 
-          return swept.length === 0 ? { kind: 'rejected' } : { kind: 'reused', familyId };
+          return swept.length === 0
+            ? { kind: 'rejected' }
+            : { kind: 'reused', familyId, userId: row.userId as UUID };
         };
 
         if (row.revokedAt !== null) {
           return revokeFamily();
+        }
+
+        const granted = row.scope.split(' ');
+        const { scopes } = request;
+
+        if (scopes !== undefined && scopes.some((scope) => !granted.includes(scope))) {
+          return { kind: 'invalid_scope', granted };
         }
 
         // A concurrent refresh of the same token wins the race here; the loser is a reuse.
@@ -144,12 +168,6 @@ export function createOAuthTokens(
 
         if (revoked.length === 0) {
           return revokeFamily();
-        }
-
-        const granted = row.scope.split(' ');
-
-        if (scopes !== undefined && scopes.some((scope) => !granted.includes(scope))) {
-          throw new Error('A refresh may only narrow the scopes of the token it rotates');
         }
 
         const { tokens, rows } = pair(

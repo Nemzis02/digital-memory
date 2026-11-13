@@ -18,8 +18,9 @@ integration tasks are not blocked. ADR 009 is the decision; this spec is the pla
 - [x] Task 6: Authorize, Telegram OIDC redirect and callback, consent page, code minting.
       Unit tests with a fake provider and a test JWKS. The admin check reads the `id` claim
       of the `profile` scope, and `nonce` is checked only when the token carries it.
-- [ ] Task 7: Token endpoint: code grant, refresh rotation, family revocation, error
-      responses. Integration tests.
+- [x] Task 7: Token endpoint: code grant, refresh rotation, family revocation, error
+      responses. Integration tests. The refresh grant requires `client_id` and binds it to
+      the token's client; a widening `scope` is `invalid_scope` and burns nothing.
 - [ ] Task 8: MCP handler, the six tools, the MCP file source, SSE heartbeat; `routes.ts`;
       `serve()` takes extra routes; wiring in `index.ts`; ESLint allows the MCP packages.
       Unit tests on `memoryFakes()`; `http` integration tests for 401, 403, 405.

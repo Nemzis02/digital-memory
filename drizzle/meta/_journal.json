@@ -36,6 +36,13 @@
       "when": 1794554561990,
       "tag": "0004_shallow_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794561402273,
+      "tag": "0005_fancy_greymalkin",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,3 @@
+DROP INDEX "conversation_turns_conversation_idx";--> statement-breakpoint
+ALTER TABLE "conversation_turns" ADD COLUMN "seq" bigint NOT NULL GENERATED ALWAYS AS IDENTITY (sequence name "conversation_turns_seq_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1);--> statement-breakpoint
+CREATE INDEX "conversation_turns_conversation_idx" ON "conversation_turns" USING btree ("conversation_id","seq");

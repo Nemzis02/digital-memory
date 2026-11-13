@@ -98,11 +98,11 @@ export const conversationTurns = pgTable(
     role: turnRole('role').notNull(),
     body: text('body').notNull(),
     sourceRef: text('source_ref'),
+    // Insertion order; two turns can share a `created_at` millisecond.
+    seq: bigint('seq', { mode: 'number' }).notNull().generatedAlwaysAsIdentity(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    index('conversation_turns_conversation_idx').on(table.conversationId, table.createdAt),
-  ],
+  (table) => [index('conversation_turns_conversation_idx').on(table.conversationId, table.seq)],
 );
 
 // No FK to conversations: the exchange is appended only after the confirmation is sent.

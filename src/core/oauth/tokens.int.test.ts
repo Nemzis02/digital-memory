@@ -45,8 +45,14 @@ describe('oauth tokens', () => {
 
       expect(await tokens.authenticate(first.refreshToken)).toBeUndefined();
       expect(await tokens.authenticate('unknown')).toBeUndefined();
-      expect(await tokens.refresh(first.accessToken)).toEqual({ kind: 'rejected' });
-      expect(await tokens.refresh('unknown')).toEqual({ kind: 'rejected' });
+      const by = { clientId: issued.clientId };
+
+      expect(await tokens.refresh(first.accessToken, by)).toEqual({ kind: 'rejected' });
+      expect(await tokens.refresh('unknown', by)).toEqual({ kind: 'rejected' });
+
+      expect(await tokens.refresh(first.refreshToken, { clientId: 'other' })).toEqual({
+        kind: 'rejected',
+      });
     });
   });
 
@@ -55,8 +61,14 @@ describe('oauth tokens', () => {
       const issued = await grant(db);
       const tokens = createOAuthTokens(db, { accessTtlSeconds: 3600, refreshTtlSeconds: 86_400 });
 
+      const by = { clientId: issued.clientId };
       const first = await tokens.issue(issued);
-      const rotated = await tokens.refresh(first.refreshToken, ['memory:read']);
+
+      expect(await tokens.refresh(first.refreshToken, { ...by, scopes: ['memory:admin'] })).toEqual(
+        { kind: 'invalid_scope', granted: issued.scopes },
+      );
+
+      const rotated = await tokens.refresh(first.refreshToken, { ...by, scopes: ['memory:read'] });
 
       if (rotated.kind !== 'issued') {
         throw new Error(`expected issued, got ${rotated.kind}`);
@@ -71,18 +83,15 @@ describe('oauth tokens', () => {
         scopes: ['memory:read'],
       });
 
-      expect(await tokens.refresh(first.refreshToken)).toEqual({
+      expect(await tokens.refresh(first.refreshToken, by)).toEqual({
         kind: 'reused',
         familyId: first.familyId,
+        userId: issued.userId,
       });
 
       expect(await tokens.authenticate(first.accessToken)).toBeUndefined();
       expect(await tokens.authenticate(rotated.tokens.accessToken)).toBeUndefined();
-      expect(await tokens.refresh(rotated.tokens.refreshToken)).toEqual({ kind: 'rejected' });
-
-      const fresh = await tokens.issue(issued);
-
-      await expect(tokens.refresh(fresh.refreshToken, ['memory:admin'])).rejects.toThrow('narrow');
+      expect(await tokens.refresh(rotated.tokens.refreshToken, by)).toEqual({ kind: 'rejected' });
     });
   });
 
@@ -102,11 +111,13 @@ describe('oauth tokens', () => {
       clock = new Date('2026-11-12T10:01:00Z');
 
       expect(await tokens.authenticate(first.accessToken)).toBeUndefined();
-      expect((await tokens.refresh(first.refreshToken)).kind).toBe('issued');
+      const by = { clientId: issued.clientId };
+
+      expect((await tokens.refresh(first.refreshToken, by)).kind).toBe('issued');
 
       clock = new Date('2026-11-12T10:03:00Z');
 
-      expect(await tokens.refresh(first.refreshToken)).toEqual({ kind: 'rejected' });
+      expect(await tokens.refresh(first.refreshToken, by)).toEqual({ kind: 'rejected' });
     });
   });
 });

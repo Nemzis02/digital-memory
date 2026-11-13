@@ -5,6 +5,7 @@ import { hashRef } from '../../core/telemetry/attributes.ts';
 import type { HttpRoute } from '../../http/server.ts';
 import {
   clearLoginCookie,
+  FORM_MAX_BYTES,
   readForm,
   readLoginCookie,
   redirect,
@@ -18,8 +19,6 @@ import { SCOPES } from './scopes.ts';
 const log = logger.child({ module: 'mcp' });
 
 export const CODE_TTL_SECONDS = 600;
-
-const FORM_MAX_BYTES = 4096;
 
 export interface ConsentOptions {
   origin: string;
