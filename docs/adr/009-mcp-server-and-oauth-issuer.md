@@ -35,8 +35,10 @@ Research on 2026-11-09 changed four things the earlier ADRs assumed.
 1. **The identity step is Telegram's OpenID Connect provider.** `/oauth/authorize` sends the
    browser to `oauth.telegram.org` with PKCE, `state` and `nonce`, exchanges the code with the
    bot's client secret, verifies the ID token against the provider's JWKS, and accepts the
-   login only when `sub` equals `TELEGRAM_ADMIN_ID`. Any other account sees a fixed refusal
-   page and nothing is stored. The OIDC client id is the numeric prefix of the bot token.
+   login only when the numeric `id` claim of the `profile` scope equals `TELEGRAM_ADMIN_ID`;
+   `sub` is an opaque identifier, not the user id. `nonce` is sent and checked when the token
+   carries it, because Telegram does not document the parameter. Any other account sees a
+   fixed refusal page and nothing is stored. The OIDC client id is the numeric prefix of the bot token.
    This is Telegram Login as BotFather now defines it, so AGENTS.md rule 3 holds.
 2. **A client is known by its Client ID Metadata Document or by pre-registration.** There is
    no registration endpoint. When `client_id` is an `https` URL with a non-root path, the
@@ -154,8 +156,9 @@ Research on 2026-11-09 changed four things the earlier ADRs assumed.
 - A Dynamic Client Registration fallback, if a needed client ships without a metadata
   document. Cursor is the first candidate.
 - Cleanup of expired codes, tokens and login sessions; the table is small for one user.
-- The provider shipped in 2026-04. Confirm with the real bot that `sub` is the numeric
-  Telegram user id before the first deploy, and keep the claim comparison in one place.
+- The provider shipped in 2026-04. Confirm with the real bot that `id` is the numeric
+  Telegram user id and whether the ID token echoes `nonce` before the first deploy; the
+  claim comparison lives in one function.
 - Multi-user needs an owner field in the Qdrant payload and in every filter. Out of scope.
 - Whether `save_memory` accepts a summary the client's model wrote (ADR 004 Open) matters
   more over MCP, where the caller is a strong model.

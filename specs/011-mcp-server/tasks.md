@@ -15,8 +15,9 @@ integration tasks are not blocked. ADR 009 is the decision; this spec is the pla
 - [x] Task 5: Client resolution: metadata-document fetch and validation with an injected
       fetch, registered lookup. Unit tests for every refusal. Adds `oauth_clients.cache_until`
       for the `max-age` deadline (migration 0004).
-- [ ] Task 6: Authorize, Telegram OIDC redirect and callback, consent page, code minting.
-      Unit tests with a fake provider and a test JWKS.
+- [x] Task 6: Authorize, Telegram OIDC redirect and callback, consent page, code minting.
+      Unit tests with a fake provider and a test JWKS. The admin check reads the `id` claim
+      of the `profile` scope, and `nonce` is checked only when the token carries it.
 - [ ] Task 7: Token endpoint: code grant, refresh rotation, family revocation, error
       responses. Integration tests.
 - [ ] Task 8: MCP handler, the six tools, the MCP file source, SSE heartbeat; `routes.ts`;
@@ -25,7 +26,7 @@ integration tasks are not blocked. ADR 009 is the decision; this spec is the pla
 - [ ] Task 9: `oauth:client` CLI with `add`, `list`, `remove`. Unit test.
 - [ ] Task 10: Rate limit and the OAuth event log lines. Unit tests.
 - [ ] Task 11: Live: MCP Inspector over a tunnel, `claude mcp add --transport http`, Cursor
-      with a registered client; confirm the provider's `sub` is the numeric user id. The
-      BotFather steps go into the README.
+      with a registered client; confirm the provider's `id` claim is the numeric user id and
+      whether the ID token echoes `nonce`. The BotFather steps go into the README.
 - [ ] Task 12: MEMORY.md entries for the quirks found; README through `readme-updater`;
       `change-review`, then `security-review`.

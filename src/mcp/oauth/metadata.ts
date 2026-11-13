@@ -7,6 +7,10 @@ export const AUTHORIZE_PATH = '/oauth/authorize';
 
 export const TOKEN_PATH = '/oauth/token';
 
+export const CALLBACK_PATH = '/oauth/callback';
+
+export const CONSENT_PATH = '/oauth/consent';
+
 export const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
 
 export const PROTECTED_RESOURCE_MCP_PATH = `${PROTECTED_RESOURCE_PATH}${MCP_PATH}`;

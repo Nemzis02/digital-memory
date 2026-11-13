@@ -14,6 +14,8 @@ src/mcp/oauth/authorize.ts         # GET /oauth/authorize: request validation
 src/mcp/oauth/telegram-oidc.ts     # redirect to oauth.telegram.org, code exchange, ID token check
 src/mcp/oauth/callback.ts          # GET /oauth/callback: state, nonce, sub == admin
 src/mcp/oauth/consent.ts           # GET|POST /oauth/consent: page and approval
+src/mcp/oauth/browser.ts           # login cookie, capped form body, redirect and HTML responders
+src/mcp/oauth/pages.ts             # error, refusal and consent pages, server-rendered
 src/mcp/oauth/token.ts             # POST /oauth/token: code grant, refresh rotation
 src/mcp/oauth/cimd.ts              # Client ID Metadata Document fetch and validation
 src/mcp/oauth/bearer.ts            # bearer check: hash, expiry, resource, scope
@@ -24,6 +26,7 @@ src/core/oauth/clients.ts          # oauth_clients on Drizzle
 src/core/oauth/codes.ts            # oauth_authorization_codes
 src/core/oauth/tokens.ts           # oauth_tokens, families, rotation
 src/core/oauth/login-sessions.ts   # oauth_login_sessions
+src/core/oauth/pkce.ts             # verifier, S256 challenge, challenge syntax
 src/core/memory/read.ts            # listed(), found(), getMemory(), fileLink()
 src/core/forget/requests.ts        # user and client scoping
 src/core/db/schema.ts, drizzle/    # columns and the new table, migration
@@ -82,13 +85,16 @@ presented and refused, the header also carries `error="invalid_token"` (RFC 6750
    request, a `state` and a `nonce` for Telegram, a PKCE verifier for Telegram, and an
    expiry 10 minutes out. The session id travels in an `HttpOnly`, `Secure`, `SameSite=Lax`
    cookie, and the browser goes to `https://oauth.telegram.org/auth` with
-   `client_id=<bot id>`, `redirect_uri=<origin>/oauth/callback`, `scope=openid`, `state`,
-   `nonce`, `code_challenge` and `S256`.
+   `client_id=<bot id>`, `redirect_uri=<origin>/oauth/callback`, `scope=openid profile`,
+   `state`, `nonce`, `code_challenge` and `S256`. The `profile` scope brings the numeric `id`
+   claim; `sub` alone is an opaque identifier.
 3. `/oauth/callback` loads the session from the cookie, requires `state` to match, exchanges
-   the code at `https://oauth.telegram.org/token` with the client secret and the verifier,
-   verifies the ID token with `jose` against the provider's JWKS (`iss`, `aud`, `exp`,
-   `nonce`), and requires `sub` to equal `TELEGRAM_ADMIN_ID` as a string of digits. Any other
-   `sub` renders the fixed refusal page, deletes the session and stores nothing. On success
+   the code at `https://oauth.telegram.org/token` with HTTP Basic client credentials and the
+   verifier, verifies the ID token with `jose` against the provider's JWKS (`iss`, `aud`,
+   `exp`, and `nonce` when the token carries one: Telegram does not document `nonce`, so an
+   absent claim logs a warning), and requires the `id` claim to equal `TELEGRAM_ADMIN_ID`.
+   `sub` is logged only as a hash prefix. Any other account renders the fixed refusal page,
+   deletes the session and stores nothing. On success
    the session records the user (upserted in `users` by Telegram id) and the browser goes to
    `/oauth/consent`.
 4. `/oauth/consent` shows the client name, the redirect host, and the requested scopes as
@@ -96,6 +102,8 @@ presented and refused, the header also carries `error="invalid_token"` (RFC 6750
    32 random bytes, stored as SHA-256 with the client id, user id, redirect URI, code
    challenge, the approved scopes, `resource`, and an expiry 10 minutes out. The session is
    consumed. The browser goes to the redirect URI with `code`, `state` and `iss=<origin>`.
+   The consent form repeats the session id in a hidden field that must equal the cookie, and
+   an approval with no box checked counts as a denial.
 5. `POST /oauth/token` with `grant_type=authorization_code` takes `code`, `client_id`,
    `redirect_uri`, `code_verifier` and `resource`. It consumes the code atomically (`UPDATE …
 WHERE consumed_at IS NULL RETURNING`), checks the client id, the redirect URI, `S256` of
@@ -227,8 +235,8 @@ Unit: PKCE challenge and verifier; token minting and hashing; refresh rotation a
 revocation on a fake store; code consume once; client resolution with an injected fetch
 (happy path, redirect refused, over 5 KB, special-use address, `client_id` mismatch, missing
 redirect URI, loopback port match, error not cached); scope check and the 403 challenge
-string; the Telegram ID token check against a test JWKS (good, wrong `nonce`, wrong `aud`,
-expired, wrong `sub`); consent page rendering; each tool on `memoryFakes()` (search, list,
+string; the Telegram ID token check against a test JWKS (good, wrong `nonce`, missing `nonce`,
+wrong `aud`, expired, missing `id`); consent page rendering; each tool on `memoryFakes()` (search, list,
 get found and not found, file link on a document and on a text, save text, URL, file over
 the cap, forget step 1, step 2, reused id); the env refine; the rate limit window.
 
@@ -254,5 +262,5 @@ live tests use a tunnel.
 ## Open
 
 Mirrors ADR 009 Open: revocation endpoint, Dynamic Client Registration fallback, cleanup of
-expired rows, the `sub` format check against the real provider, multi-user, and a
+expired rows, the `id` and `nonce` check against the real provider, multi-user, and a
 client-written summary on save.

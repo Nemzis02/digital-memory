@@ -8,6 +8,7 @@ import { upsertUser } from '../db/users.ts';
 /** The validated authorize request, kept until the consent step mints a code for it. */
 export interface AuthorizeRequest {
   clientId: string;
+  clientName: string;
   redirectUri: string;
   codeChallenge: string;
   scopes: string[];

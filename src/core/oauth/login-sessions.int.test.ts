@@ -9,6 +9,7 @@ import { createLoginSessions } from './login-sessions.ts';
 const input = (expiresAt: Date): LoginSessionInput => ({
   request: {
     clientId: 'https://client.example/oauth/client.json',
+    clientName: 'Example Client',
     redirectUri: 'https://claude.ai/api/mcp/auth_callback',
     codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
     scopes: ['memory:read'],
