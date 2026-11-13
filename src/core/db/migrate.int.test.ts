@@ -38,6 +38,7 @@ describe('runMigrations', () => {
           'oauth_clients.kind',
           'oauth_clients.metadata_url',
           'oauth_clients.fetched_at',
+          'oauth_clients.cache_until',
           'oauth_clients.etag',
           'oauth_authorization_codes.resource',
           'oauth_tokens.resource',

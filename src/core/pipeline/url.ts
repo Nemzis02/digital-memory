@@ -16,7 +16,11 @@ export interface UrlFetcher {
   fetch(url: string): Promise<FetchedPage>;
 }
 
-async function readCapped(body: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+/** Buffers the stream and cancels it once the size passes the cap. */
+export async function readCapped(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let size = 0;
 
@@ -31,9 +35,9 @@ async function readCapped(body: ReadableStream<Uint8Array>): Promise<Uint8Array>
 
     size += value.byteLength;
 
-    if (size > MAX_BYTES) {
+    if (size > maxBytes) {
       await reader.cancel();
-      throw new Error(`Page exceeds ${String(MAX_BYTES)} bytes`);
+      throw new Error(`Body exceeds ${String(maxBytes)} bytes`);
     }
 
     chunks.push(value);
@@ -69,7 +73,8 @@ export function createUrlFetcher(impl: typeof fetch = fetch): UrlFetcher {
         throw new Error(`${target.origin} answered ${String(response.status)}`);
       }
 
-      const body = response.body === null ? new Uint8Array() : await readCapped(response.body);
+      const body =
+        response.body === null ? new Uint8Array() : await readCapped(response.body, MAX_BYTES);
 
       log.debug('fetched', { host: target.host, bytes: body.byteLength });
 

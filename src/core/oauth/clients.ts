@@ -13,6 +13,7 @@ export interface OAuthClient {
   kind: OAuthClientKind;
   metadataUrl?: string;
   fetchedAt?: Date;
+  cacheUntil?: Date;
   etag?: string;
 }
 
@@ -26,6 +27,7 @@ export interface CachedMetadataInput {
   name: string;
   redirectUris: readonly string[];
   fetchedAt: Date;
+  cacheUntil: Date;
   etag?: string;
 }
 
@@ -49,6 +51,7 @@ function toClient(row: typeof oauthClients.$inferSelect): OAuthClient {
     kind: row.kind,
     ...(row.metadataUrl === null ? {} : { metadataUrl: row.metadataUrl }),
     ...(row.fetchedAt === null ? {} : { fetchedAt: row.fetchedAt }),
+    ...(row.cacheUntil === null ? {} : { cacheUntil: row.cacheUntil }),
     ...(row.etag === null ? {} : { etag: row.etag }),
   };
 }
@@ -99,6 +102,7 @@ export function createOAuthClients(db: Database = database()): OAuthClients {
         name: input.name,
         redirectUris: [...input.redirectUris],
         fetchedAt: input.fetchedAt,
+        cacheUntil: input.cacheUntil,
         etag: input.etag ?? null,
       };
 

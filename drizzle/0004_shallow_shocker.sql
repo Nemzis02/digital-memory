@@ -1,0 +1,1 @@
+ALTER TABLE "oauth_clients" ADD COLUMN "cache_until" timestamp with time zone;

@@ -124,8 +124,10 @@ document must be JSON with `client_id` equal to the URL, a `client_name`, and a 
 `redirect_uris` array of `https` URLs or loopback `http` URLs. A loopback redirect URI
 matches the request's on scheme, host and path with the port ignored; every other redirect
 URI matches exactly. `token_endpoint_auth_method` is `none` when absent, and any other value
-is rejected. A document is cached by its `Cache-Control` and `ETag` headers in `oauth_clients`
-(`kind = 'cimd'`, `metadata_url`, `fetched_at`); a fetch error is never cached and fails the
+is rejected. A document is cached in `oauth_clients` (`kind = 'cimd'`, `metadata_url`,
+`fetched_at`, `cache_until`, `etag`): the deadline comes from `Cache-Control: max-age`, at
+most 24 hours; `no-store`, `no-cache` or no `max-age` means the next request revalidates with
+`If-None-Match`, and a 304 extends the deadline. A fetch error is never cached and fails the
 request.
 
 Any other `client_id` must be a registered row (`kind = 'registered'`). `npm run oauth:client
@@ -189,7 +191,7 @@ clips each memory's text to 4,000 characters so a result stays under every clien
 
 | Table                       | Change                                                                                                 |
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `oauth_clients`             | `kind` enum `cimd`/`registered`, `metadata_url`, `fetched_at`, `etag`                                  |
+| `oauth_clients`             | `kind` enum `cimd`/`registered`, `metadata_url`, `fetched_at`, `cache_until`, `etag`                   |
 | `oauth_authorization_codes` | `resource` text                                                                                        |
 | `oauth_tokens`              | `resource` text, `family_id` uuid, index on `family_id`                                                |
 | `oauth_login_sessions`      | new: `id`, `request` jsonb, `state`, `nonce`, `code_verifier`, `user_id?`, `expires_at`, `consumed_at` |

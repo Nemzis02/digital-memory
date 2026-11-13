@@ -44,12 +44,14 @@ describe('oauth clients', () => {
       const clients = createOAuthClients(db);
       const first = new Date('2026-11-12T10:00:00Z');
       const second = new Date('2026-11-12T11:00:00Z');
+      const until = new Date('2026-11-13T10:00:00Z');
 
       const cached = await clients.cacheMetadata({
         clientId: METADATA_URL,
         name: 'Claude',
         redirectUris: ['https://claude.ai/api/mcp/auth_callback'],
         fetchedAt: first,
+        cacheUntil: until,
         etag: '"v1"',
       });
 
@@ -60,6 +62,7 @@ describe('oauth clients', () => {
         kind: 'cimd',
         metadataUrl: METADATA_URL,
         fetchedAt: first,
+        cacheUntil: until,
         etag: '"v1"',
       });
 
@@ -68,9 +71,11 @@ describe('oauth clients', () => {
         name: 'Claude',
         redirectUris: ['https://claude.ai/api/mcp/auth_callback', 'http://127.0.0.1/callback'],
         fetchedAt: second,
+        cacheUntil: second,
       });
 
       expect(refreshed.fetchedAt).toEqual(second);
+      expect(refreshed.cacheUntil).toEqual(second);
       expect(refreshed.redirectUris).toHaveLength(2);
       expect(refreshed.etag).toBeUndefined();
       expect(await clients.list()).toEqual([refreshed]);

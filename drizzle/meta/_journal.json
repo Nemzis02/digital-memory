@@ -29,6 +29,13 @@
       "when": 1794389296996,
       "tag": "0003_shiny_steel_serpent",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794554561990,
+      "tag": "0004_shallow_shocker",
+      "breakpoints": true
     }
   ]
 }

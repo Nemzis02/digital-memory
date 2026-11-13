@@ -12,8 +12,9 @@ integration tasks are not blocked. ADR 009 is the decision; this spec is the pla
       `fileLink()`; the agent tools import them. Unit tests.
 - [x] Task 4: Metadata routes and the bearer check with resource and scope; the 401 and 403
       challenges. Unit tests.
-- [ ] Task 5: Client resolution: metadata-document fetch and validation with an injected
-      fetch, registered lookup. Unit tests for every refusal.
+- [x] Task 5: Client resolution: metadata-document fetch and validation with an injected
+      fetch, registered lookup. Unit tests for every refusal. Adds `oauth_clients.cache_until`
+      for the `max-age` deadline (migration 0004).
 - [ ] Task 6: Authorize, Telegram OIDC redirect and callback, consent page, code minting.
       Unit tests with a fake provider and a test JWKS.
 - [ ] Task 7: Token endpoint: code grant, refresh rotation, family revocation, error

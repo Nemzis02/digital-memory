@@ -29,6 +29,7 @@ export const oauthClients = pgTable('oauth_clients', {
   kind: oauthClientKind('kind').notNull(),
   metadataUrl: text('metadata_url'),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }),
+  cacheUntil: timestamp('cache_until', { withTimezone: true }),
   etag: text('etag'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
